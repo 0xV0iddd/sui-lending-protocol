@@ -88,26 +88,12 @@ async function setupVictim(victimKeypair, label) {
     fundTx.transferObjects([suiCoin], victimAddr);
     await executeTx(fundTx, funderKeypair);
 
-    // 2. Open Obligation (Mengembalikan Obigation, ObligationKey, HotPotato)
+    // 2. Open Obligation (Menggunakan entry function untuk menghindari masalah hot potato di SDK)
     const openTx = new Transaction();
-    const [obligation, obligationKey, hotPotato] = openTx.moveCall({
-        target: `${PKG}::open_obligation::open_obligation`,
+    openTx.moveCall({
+        target: `${PKG}::open_obligation::open_obligation_entry`,
         arguments: [openTx.object(VERSION)],
     });
-
-    // Teruskan langsung sebagai TransactionArgument — JANGAN bungkus dengan openTx.object()
-    openTx.moveCall({
-        target: `${PKG}::open_obligation::return_obligation`,
-        arguments: [
-            openTx.object(VERSION), // &Version — pakai object()
-            obligation,             // Obligation by value — langsung dari hasil moveCall
-            hotPotato,              // ObligationHotPotato by value — langsung dari hasil moveCall
-        ],
-    });
-
-    // ObligationKey ditransfer ke victim
-    openTx.transferObjects([obligationKey], victimAddr);
-
     const openResult = await executeTx(openTx, victimKeypair);
     
     let obligationId = "", obligationKeyId = "";
