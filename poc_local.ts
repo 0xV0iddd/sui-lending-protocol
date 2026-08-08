@@ -13,20 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET ====================
-const PKG = "0xc2e9aebe7fcfbd4c4a6aa49a387fe33817f41f0bf70873100b4f12ad3168b670";
-const VERSION = "0x531afe6c8abf642b921762b9b81";
-const MARKET = "0x078ba677e7d9090a1a2d925377d5806534591446ce7916c65399dd4ead992962";
-const ORACLE = "0x397ec083471276c9245bf23ad51cbf526784584cb68053f216a1513f3e37d677";
-const REGISTRY = "0x4a5de23a9ce5624377ac5ac2dc3e89d9d183dec31d06cee6f0a98519fdf3b01f";
+// Diambil dari output_protocol.json.txt
+const PKG = "0x4447fa7f281993207692ba0eeff209c699316c0fbdc42c5a1e27e59d4dd6fd60"; // Package ID Protokol baru
+const VERSION = "0xa7f721da1598fd7ba932ed3ef85958ada1318cc8697df2a30e2491d7e0a9c6d2"; // Version ID baru
+const MARKET = "0x6044e8e1a7a3d768474678f93a80dee16921ee712768b22c2c70b4486f0cd49d"; // Market ID baru
+const ORACLE = "0x3a7e716c73f7f0471bf7221aea3d31e3729ec0dbd1cf62da73cedbb03ce75d1e"; // Oracle ID baru
+const REGISTRY = "0xa9f387b821f15ef02e151facd8fdcffe1c14a766538f677d8dd8b95a8c751fee"; // Registry ID baru
 const CLOCK = "0x6";
 
-const TEST_COIN_PKG = "0x825fbeb93ed12fed3058db59adced82b503d8468b603498418bf21a63230fc84";
+// Diambil dari output_testcoin (2).json.txt
+const TEST_COIN_PKG = "0x0e027cb787e9735b869ad976bb6b2d4497d0addb415e1372cbfca2784a953ab0"; // Package ID Test Coin baru
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
-const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
+const USDC_TREASURY = "0xc2deb84266c8ef88d43f35dba448c896f806e662e0b562de4c5f62f36cf49711"; // Treasury USDC baru
+const ETH_TREASURY = "0xab8944a758a3a3de2d6c8a6a9dac3dad5ced71ac9885f51327c1523ec77a1336"; // Treasury ETH baru
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
