@@ -28,11 +28,6 @@ const SUI_TYPE = "0x2::sui::SUI";
 const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
 const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
 
-// ID Hasil Publish Protokol Anda Sebelumnya
-const USDC_METADATA = "0x95feaf15c2c9fe45255caf33960a5b218a05df8f24d665d87b566cf921abe269";
-const ETH_METADATA = "0xfe7a6ad2a78718993752ac3b59c178c2b5af1cd1cc1b8377f7e062017ca211f3";
-const SUI_METADATA = "0x9258181f5ceac8dbffb7030890243caed69a9599d2886d957a9cb7656af3bdb3";
-
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
 const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
@@ -62,6 +57,37 @@ async function findAdminCap(): Promise<string> {
         cursor = objects.nextCursor;
     }
     throw new Error("[INIT] AdminCap not found. Make sure funder is the deployer.");
+}
+
+// ==================== HELPER: CARI COIN METADATA ID ====================
+// Mencari Object ID dari CoinMetadata<T> secara dinamis di dompet Funder.
+// Untuk SUI native, CoinMetadata-nya adalah immutable object bawaan sistem (biasanya di 0x2).
+async function findCoinMetadata(coinType: string): Promise<string> {
+    // Khusus untuk SUI native, CoinMetadata-nya ada di ID fixed bawaan Sui Framework
+    if (coinType === SUI_TYPE) {
+        return "0x0000000000000000000000000000000000000000000000000000000000000002::sui::CoinMetadata"; 
+        // Atau bisa juga di-fetch, tapi di local testnet SUI metadata biasanya immutable di 0x2
+    }
+    
+    console.log(`[INIT] Searching for CoinMetadata<${coinType}>...`);
+    let cursor = null;
+    while (true) {
+        const objects = await client.getOwnedObjects({
+            owner: funderAddress,
+            cursor,
+            options: { showType: true },
+        });
+        for (const obj of objects.data) {
+            const objType = obj.data?.type || "";
+            if (objType.includes(`0x2::coin::CoinMetadata<${coinType}>`)) {
+                console.log(`[INIT] CoinMetadata found: ${obj.data.objectId}`);
+                return obj.data.objectId;
+            }
+        }
+        if (!objects.hasNextPage) break;
+        cursor = objects.nextCursor;
+    }
+    throw new Error(`CoinMetadata not found for ${coinType}`);
 }
 
 // ==================== HELPER: CARI X_ORACLE PACKAGE ID ====================
@@ -120,6 +146,12 @@ async function readObligationState(obligationId) {
 
 async function initializeMarket(adminCapId) {
     console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle)...");
+    
+    // Cari CoinMetadata ID secara dinamis
+    const suiMetaId = await findCoinMetadata(SUI_TYPE);
+    const usdcMetaId = await findCoinMetadata(USDC_TYPE);
+    const ethMetaId = await findCoinMetadata(ETH_TYPE);
+
     const tx = new Transaction();
 
     // 1. Allow all whitelist
@@ -202,7 +234,7 @@ async function initializeMarket(adminCapId) {
     };
 
     // SUI
-    registerDecimals(SUI_TYPE, SUI_METADATA);
+    registerDecimals(SUI_TYPE, suiMetaId);
     addInterestModel(SUI_TYPE, {
         baseBorrowRatePerSec: 0n, interestRateScale: 10n ** 7n,
         borrowRateOnMidKink: 10n * (SCALE / 100n), midKink: 60n * (SCALE / 100n),
@@ -218,7 +250,7 @@ async function initializeMarket(adminCapId) {
     setMinCollateral(SUI_TYPE, 0n);
 
     // USDC
-    registerDecimals(USDC_TYPE, USDC_METADATA);
+    registerDecimals(USDC_TYPE, usdcMetaId);
     addInterestModel(USDC_TYPE, {
         baseBorrowRatePerSec: 0n, interestRateScale: 10n ** 7n,
         borrowRateOnMidKink: 8n * (SCALE / 100n), midKink: 60n * (SCALE / 100n),
@@ -234,7 +266,7 @@ async function initializeMarket(adminCapId) {
     setMinCollateral(USDC_TYPE, 0n);
 
     // ETH
-    registerDecimals(ETH_TYPE, ETH_METADATA);
+    registerDecimals(ETH_TYPE, ethMetaId);
     addInterestModel(ETH_TYPE, {
         baseBorrowRatePerSec: 0n, interestRateScale: 10n ** 7n,
         borrowRateOnMidKink: 10n * (SCALE / 100n), midKink: 60n * (SCALE / 100n),
@@ -364,7 +396,6 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     console.log(`[${label}] Step 4 done: Minted and supplied USDC and ETH to market`);
 
     // --- STEP 4.5: Set Oracle Prices ke $1 (SUI), $1 (USDC), $2000 (ETH) ---
-    // Mengirim u64 langsung ke update_price (price feed dibuat di dalam move)
     const initPriceTx = new Transaction();
     
     initPriceTx.moveCall({
@@ -438,7 +469,6 @@ async function crashOraclePrice(xOraclePkg) {
     console.log("\n[TRIGGER] Crashing SUI price to $0.40 via Oracle Update...");
     const tx = new Transaction();
     
-    // Langsung kirim u64 value ke update_price
     tx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
