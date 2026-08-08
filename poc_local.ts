@@ -60,34 +60,15 @@ async function findAdminCap(): Promise<string> {
 }
 
 // ==================== HELPER: CARI COIN METADATA ID ====================
-// Mencari Object ID dari CoinMetadata<T> secara dinamis di dompet Funder.
-// Untuk SUI native, CoinMetadata-nya adalah immutable object bawaan sistem (biasanya di 0x2).
+// Mengambil ID CoinMetadata secara dinamis melalui RPC getCoinMetadata
 async function findCoinMetadata(coinType: string): Promise<string> {
-    // Khusus untuk SUI native, CoinMetadata-nya ada di ID fixed bawaan Sui Framework
-    if (coinType === SUI_TYPE) {
-        return "0x0000000000000000000000000000000000000000000000000000000000000002::sui::CoinMetadata"; 
-        // Atau bisa juga di-fetch, tapi di local testnet SUI metadata biasanya immutable di 0x2
-    }
-    
     console.log(`[INIT] Searching for CoinMetadata<${coinType}>...`);
-    let cursor = null;
-    while (true) {
-        const objects = await client.getOwnedObjects({
-            owner: funderAddress,
-            cursor,
-            options: { showType: true },
-        });
-        for (const obj of objects.data) {
-            const objType = obj.data?.type || "";
-            if (objType.includes(`0x2::coin::CoinMetadata<${coinType}>`)) {
-                console.log(`[INIT] CoinMetadata found: ${obj.data.objectId}`);
-                return obj.data.objectId;
-            }
-        }
-        if (!objects.hasNextPage) break;
-        cursor = objects.nextCursor;
+    const response = await client.getCoinMetadata({ coinType });
+    if (!response) {
+        throw new Error(`CoinMetadata not found for ${coinType}`);
     }
-    throw new Error(`CoinMetadata not found for ${coinType}`);
+    console.log(`[INIT] CoinMetadata found: ${response.id}`);
+    return response.id;
 }
 
 // ==================== HELPER: CARI X_ORACLE PACKAGE ID ====================
