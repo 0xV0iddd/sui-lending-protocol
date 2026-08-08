@@ -246,6 +246,15 @@ module x_oracle::x_oracle {
     diff <= scale + reasonable_diff && diff >= scale - reasonable_diff
   }
 
+public fun update_price<T>(self: &mut XOracle, clock: &Clock, value: u64) {
+    let coin_type = get<T>();
+    if (!table::contains(&self.prices, coin_type)) {
+      table::add(&mut self.prices, coin_type, price_feed::new(0,0));
+    };
+    let price_feed = table::borrow_mut(&mut self.prices, coin_type);
+    price_feed::update_price_feed(price_feed, value, clock::timestamp_ms(clock) / 1000);
+  }
+
   #[test]
   public fun test_feed_match() {
     let feed1 = price_feed::new(10100000, 1);
@@ -261,12 +270,4 @@ module x_oracle::x_oracle {
     init(X_ORACLE {}, ctx);
   }
 
-  public fun update_price<T>(self: &mut XOracle, clock: &Clock, value: u64) {
-    let coin_type = get<T>();
-    if (!table::contains(&self.prices, coin_type)) {
-      table::add(&mut self.prices, coin_type, price_feed::new(0,0));
-    };
-    let price_feed = table::borrow_mut(&mut self.prices, coin_type);
-    price_feed::update_price_feed(price_feed, value, clock::timestamp_ms(clock) / 1000);
-  }
 }
