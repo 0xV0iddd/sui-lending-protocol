@@ -1,4 +1,3 @@
-#[test_only]
 module test_coin::package {
 
   use sui::tx_context::TxContext;
