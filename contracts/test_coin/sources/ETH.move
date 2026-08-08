@@ -1,4 +1,3 @@
-#[test_only]
 module test_coin::eth {
   
   use sui::tx_context::TxContext;
