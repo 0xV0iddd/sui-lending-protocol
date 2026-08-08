@@ -28,10 +28,8 @@ const SUI_TYPE = "0x2::sui::SUI";
 const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
 const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
 
-const funderPrivateKeyStr = process.env.FUNDER_PRIVATE_KEY;
-if (!funderPrivateKeyStr) throw new Error("Missing FUNDER_PRIVATE_KEY env var");
-
-// Decode Bech32 private key (suiprivkey1q...) menjadi Uint8Array
+// PRIVATE KEY DOMPET 0xed76 (HARDCODED)
+const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
 const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
 const funderKeypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
 const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
@@ -42,7 +40,6 @@ console.log(`[INIT] Funder Address: ${funderAddress}`);
 
 async function executeTx(tx, keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
-    tx.setGasBudget(100_000_000_000); // 100 SUI Gas Budget
     return client.signAndExecuteTransaction({
         signer: keypair,
         transaction: tx,
