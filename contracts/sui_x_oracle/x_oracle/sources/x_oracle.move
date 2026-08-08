@@ -246,7 +246,7 @@ module x_oracle::x_oracle {
     diff <= scale + reasonable_diff && diff >= scale - reasonable_diff
   }
 
-public fun update_price<T>(self: &mut XOracle, clock: &Clock, value: u64) {
+  public fun update_price<T>(self: &mut XOracle, clock: &Clock, value: u64) {
     let coin_type = get<T>();
     if (!table::contains(&self.prices, coin_type)) {
       table::add(&mut self.prices, coin_type, price_feed::new(0,0));
