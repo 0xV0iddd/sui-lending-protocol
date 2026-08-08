@@ -32,10 +32,13 @@ if (!funderPrivateKey) throw new Error("Missing FUNDER_PRIVATE_KEY env var");
 const funderKeypair = Ed25519Keypair.fromSecretKey(funderPrivateKey);
 const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
 
+console.log(`[INIT] Funder Address: ${funderAddress}`);
+
 // ==================== HELPER FUNCTIONS ====================
 
 async function executeTx(tx, keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
+    tx.setGasBudget(100_000_000_000); // 100 SUI Gas Budget
     return client.signAndExecuteTransaction({
         signer: keypair,
         transaction: tx,
@@ -71,9 +74,9 @@ async function setupVictim(victimKeypair, label) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
 
-    // 1. Fund victim dengan SUI
+    // 1. Fund victim dengan 1,000 SUI (Agar muat di 1 koin gas)
     const fundTx = new Transaction();
-    const [suiCoin] = fundTx.splitCoins(fundTx.gas, [fundTx.pure.u64(10_000_000_000_000n + 10_000_000_000n)]);
+    const [suiCoin] = fundTx.splitCoins(fundTx.gas, [fundTx.pure.u64(1_000_000_000_000n + 10_000_000_000n)]);
     fundTx.transferObjects([suiCoin], fundTx.pure.address(victimAddr));
     await executeTx(fundTx, funderKeypair);
 
@@ -137,28 +140,28 @@ async function setupVictim(victimKeypair, label) {
 
     await executeTx(supplyTx, funderKeypair);
 
-    // 5. Borrow USDC
+    // 5. Borrow USDC (500 USDC)
     const borrowUSDCTx = new Transaction();
     const [borrowedUSDC] = borrowUSDCTx.moveCall({
         target: `${PKG}::borrow::borrow`,
         typeArguments: [USDC_TYPE],
         arguments: [
             borrowUSDCTx.object(VERSION), borrowUSDCTx.object(obligationId), borrowUSDCTx.object(obligationKeyId),
-            borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(5_000_000_000n),
+            borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(500_000_000n),
             borrowUSDCTx.object(ORACLE), borrowUSDCTx.object(CLOCK)
         ],
     });
     borrowUSDCTx.transferObjects([borrowedUSDC], borrowUSDCTx.pure.address(victimAddr));
     await executeTx(borrowUSDCTx, victimKeypair);
 
-    // 6. Borrow ETH
+    // 6. Borrow ETH (0.2 ETH)
     const borrowETHTx = new Transaction();
     const [borrowedETH] = borrowETHTx.moveCall({
         target: `${PKG}::borrow::borrow`,
         typeArguments: [ETH_TYPE],
         arguments: [
             borrowETHTx.object(VERSION), borrowETHTx.object(obligationId), borrowETHTx.object(obligationKeyId),
-            borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure.u64(2_000_000_000n),
+            borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure.u64(200_000_000n),
             borrowETHTx.object(ORACLE), borrowETHTx.object(CLOCK)
         ],
     });
