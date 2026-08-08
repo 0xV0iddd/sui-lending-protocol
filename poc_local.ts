@@ -65,9 +65,6 @@ async function findAdminCap(): Promise<string> {
 }
 
 // ==================== HELPER: CARI X_ORACLE PACKAGE ID ====================
-// Karena kita mempublish dengan --with-unpublished-dependencies, package x_oracle
-// memiliki ID yang berbeda dengan package protocol. Kita bisa mengekstraknya
-// dari tipe object ORACLE.
 async function getXOraclePackage(): Promise<string> {
     console.log("[INIT] Extracting XOracle Package ID...");
     const obj = await client.getObject({ id: ORACLE, options: { showType: true } });
@@ -218,7 +215,7 @@ async function initializeMarket(adminCapId) {
         liquidationDiscount: 7n, scale: 100n, maxCollateralAmount: 10n ** 17n,
     });
     addLimiter(SUI_TYPE, 10n ** 15n, 86400, 1800);
-    setMinCollateral(SUI_TYPE, 0n); // Set min collateral ke 0 agar tidak mengganggu testing
+    setMinCollateral(SUI_TYPE, 0n);
 
     // USDC
     registerDecimals(USDC_TYPE, USDC_METADATA);
@@ -367,37 +364,25 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     console.log(`[${label}] Step 4 done: Minted and supplied USDC and ETH to market`);
 
     // --- STEP 4.5: Set Oracle Prices ke $1 (SUI), $1 (USDC), $2000 (ETH) ---
-    // Diperlukan agar market mengenali harga awal sebelum di-crash
+    // Mengirim u64 langsung ke update_price (price feed dibuat di dalam move)
     const initPriceTx = new Transaction();
     
-    const suiPriceFeed = initPriceTx.moveCall({
-        target: `${xOraclePkg}::price_feed::new`,
-        arguments: [initPriceTx.pure.u64(100_000_000n), initPriceTx.pure.u8(8), initPriceTx.pure.u64(0n)],
-    });
     initPriceTx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
-        arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), suiPriceFeed],
+        arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), initPriceTx.pure.u64(100_000_000n)],
     });
 
-    const usdcPriceFeed = initPriceTx.moveCall({
-        target: `${xOraclePkg}::price_feed::new`,
-        arguments: [initPriceTx.pure.u64(100_000_000n), initPriceTx.pure.u8(8), initPriceTx.pure.u64(0n)],
-    });
     initPriceTx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [USDC_TYPE],
-        arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), usdcPriceFeed],
+        arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), initPriceTx.pure.u64(100_000_000n)],
     });
 
-    const ethPriceFeed = initPriceTx.moveCall({
-        target: `${xOraclePkg}::price_feed::new`,
-        arguments: [initPriceTx.pure.u64(200_000_000_000n), initPriceTx.pure.u8(8), initPriceTx.pure.u64(0n)],
-    });
     initPriceTx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [ETH_TYPE],
-        arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), ethPriceFeed],
+        arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), initPriceTx.pure.u64(200_000_000_000n)],
     });
 
     await executeTx(initPriceTx, funderKeypair);
@@ -453,20 +438,14 @@ async function crashOraclePrice(xOraclePkg) {
     console.log("\n[TRIGGER] Crashing SUI price to $0.40 via Oracle Update...");
     const tx = new Transaction();
     
-    // Buat PriceFeed object untuk SUI dengan value $0.40 (40_000_000 dengan scale 10^8)
-    const suiPriceFeed = tx.moveCall({
-        target: `${xOraclePkg}::price_feed::new`,
-        arguments: [tx.pure.u64(40_000_000n), tx.pure.u8(8), tx.pure.u64(0n)],
-    });
-    
-    // Update price di XOracle
+    // Langsung kirim u64 value ke update_price
     tx.moveCall({
         target: `${xOraclePkg}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
         arguments: [
             tx.object(ORACLE),
             tx.object(CLOCK),
-            suiPriceFeed,
+            tx.pure.u64(40_000_000n), // $0.40
         ],
     });
     
