@@ -12,23 +12,23 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
-// ==================== KONFIGURASI LOCAL TESTNET ====================
-// ID Valid dari output_protocol.json.txt (Epoch 1 - Deploy Terbaru)
-const PKG = "0x13ff85977d6d8590337696815702ef416c06f7545e61795fd99d256050dbaa45";
-const VERSION = "0x836c1f8c03b508a88c4066f6d76ff411e9648c34a3452a755e4563d0d7bcc664";
-const MARKET = "0xced8335a99c002986b5295ce5a0579bec8bef5d8ed7d4283537e1f2d8bda926a";
-const ORACLE = "0x0d74b0607c2596f8d81a853dcf9581febe15cadc68e03aecd58ad3428063a3d5";
-const REGISTRY = "0xcd83a256d50ca53b43c47eba7f6e8308d98cafa51c1f7c103a3fabc382a5ff08";
+// ==================== KONFIGURASI LOCAL TESTNET (ID BARU - LOCALNET FRESH) ====================
+// Dari output_protocol2.txt (Digest: B7bguPLVNXKP6jsdWCJ7uNgVUG3yxLeKvMNgBqujAmZ8, Epoch 2)
+const PKG = "0xdcaf73b9ad5879fd3d76f17f8028b117e4e0abe6a6fcfe4563a72b6ba5d55d64";
+const VERSION = "0x4441fe840e7fd257ca85886846be26b14abceb211d73cb6dc8d1ff7b348a4ebc";
+const MARKET = "0x05e8b9e14a1250a4d5d375f7b8ea706eb3d41c8012c50b16c3a5c6aaa74b638e";
+const ORACLE = "0xa45ff6e590123eff5951dd6bb1fee5ed055b71c55aa3a683365a70ddac1abce8";
+const REGISTRY = "0xf123aadb00f51a7cfb3c325c402483c5513861bac410f5b52aecf9a4b8f8ba91";
 const CLOCK = "0x6";
 
-// ID Valid dari output_testcoin (2).json.txt (Epoch 1 - Deploy Terbaru)
-const TEST_COIN_PKG = "0x8f894df0030ef5017603d15072ed6eea29eb9a4f232651e4375afb3bbe25fa44";
+// Dari output_testcoin2.txt (Digest: EydNCgsRR3qJHN6ZFTfTjp63T7w3Jpabt5oLaf9ZMU4m, Epoch 2)
+const TEST_COIN_PKG = "0x4b38950497d5f2f4e0859d253709725e6145cf08eaa25dfbe82b1ec549dce95e";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0x3e0938e690e019f2009a4c22e5cc7e1b6b5a0d577ab654bddfcd2f61e9eb82a8";
-const ETH_TREASURY = "0x552ddbf62361548ef69d2bccbfd6bef25180a455c5f1b6c6918a1d461a12e0fa";
+const USDC_TREASURY = "0xf7beaa49e6037e0761d8f98f012f292c2d683e9abfec50e7beae842dff33340d";
+const ETH_TREASURY = "0x30a259b4df48767da5669be588f9656593f77d47098b376aa7ff91822693b132";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -125,7 +125,7 @@ async function readObligationState(obligationId) {
 }
 
 // ==================== PHASE 0: INITIALIZE MARKET ====================
-
+// PENTING: Tetap aktif karena ini localnet fresh (market belum terinisialisasi)
 async function initializeMarket(adminCapId) {
     console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle)...");
     
@@ -218,6 +218,7 @@ async function initializeMarket(adminCapId) {
         });
     };
 
+    // FIX: daftarkan supply limit agar mint::mint tidak abort EFieldDoesNotExist
     const setSupplyLimit = (coinType, limit) => {
         tx.moveCall({
             target: `${PKG}::app::update_supply_limit`,
@@ -363,7 +364,7 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
         typeArguments: [USDC_TYPE],
         arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), usdcCoin, supplyTx.object(CLOCK)],
     });
-    // ✅ FIX: Transfer sUSDC ke funder, JANGAN destroy_zero (sCoin punya nilai > 0)
+    // FIX: Transfer sUSDC ke funder, JANGAN destroy_zero (sCoin punya nilai > 0)
     supplyTx.transferObjects([sUSDC], funderAddress);
 
     const [ethCoin] = supplyTx.moveCall({
@@ -375,7 +376,7 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
         typeArguments: [ETH_TYPE],
         arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), ethCoin, supplyTx.object(CLOCK)],
     });
-    // ✅ FIX: Transfer sETH ke funder, JANGAN destroy_zero (sCoin punya nilai > 0)
+    // FIX: Transfer sETH ke funder, JANGAN destroy_zero (sCoin punya nilai > 0)
     supplyTx.transferObjects([sETH], funderAddress);
 
     await executeTx(supplyTx, funderKeypair);
@@ -601,6 +602,7 @@ async function main() {
     const adminCapId = await findAdminCap();
     const xOraclePkg = await getXOraclePackage();
 
+    // Localnet fresh → initializeMarket WAJIB dijalankan
     await initializeMarket(adminCapId);
 
     const victimA = Ed25519Keypair.generate();
