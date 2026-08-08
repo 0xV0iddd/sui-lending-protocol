@@ -261,7 +261,6 @@ module x_oracle::x_oracle {
     init(X_ORACLE {}, ctx);
   }
 
-  #[test_only]
   public fun update_price<T>(self: &mut XOracle, clock: &Clock, value: u64) {
     let coin_type = get<T>();
     if (!table::contains(&self.prices, coin_type)) {
