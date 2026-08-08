@@ -8,6 +8,7 @@
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
@@ -27,9 +28,12 @@ const SUI_TYPE = "0x2::sui::SUI";
 const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
 const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
 
-const funderPrivateKey = process.env.FUNDER_PRIVATE_KEY;
-if (!funderPrivateKey) throw new Error("Missing FUNDER_PRIVATE_KEY env var");
-const funderKeypair = Ed25519Keypair.fromSecretKey(funderPrivateKey);
+const funderPrivateKeyStr = process.env.FUNDER_PRIVATE_KEY;
+if (!funderPrivateKeyStr) throw new Error("Missing FUNDER_PRIVATE_KEY env var");
+
+// Decode Bech32 private key (suiprivkey1q...) menjadi Uint8Array
+const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
+const funderKeypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
 const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
 
 console.log(`[INIT] Funder Address: ${funderAddress}`);
