@@ -28,6 +28,11 @@ const SUI_TYPE = "0x2::sui::SUI";
 const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
 const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
 
+// ID Hasil Publish Protokol Anda Sebelumnya
+const USDC_METADATA = "0x95feaf15c2c9fe45255caf33960a5b218a05df8f24d665d87b566cf921abe269";
+const ETH_METADATA = "0xfe7a6ad2a78718993752ac3b59c178c2b5af1cd1cc1b8377f7e062017ca211f3";
+const SUI_METADATA = "0x9258181f5ceac8dbffb7030890243caed69a9599d2886d957a9cb7656af3bdb3"; // Native SUI
+
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
 const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
@@ -56,10 +61,7 @@ async function findAdminCap(): Promise<string> {
         if (!objects.hasNextPage) break;
         cursor = objects.nextCursor;
     }
-    throw new Error(
-        "[INIT] AdminCap not found in funder address. " +
-        "Make sure funder is the deployer of the protocol."
-    );
+    throw new Error("[INIT] AdminCap not found. Make sure funder is the deployer.");
 }
 
 // ==================== HELPER FUNCTIONS ====================
@@ -91,23 +93,159 @@ async function readObligationState(obligationId) {
     const fields = await client.getDynamicFields({ parentId: obligationId });
     let collateralAmount = 0n, debtUSDC = 0n, debtETH = 0n;
     for (const field of fields.data) {
-        const fieldData = await client.getDynamicFieldObject({
-            parentId: obligationId,
-            name: field.name,
-        });
+        const fieldData = await client.getDynamicFieldObject({ parentId: obligationId, name: field.name });
         const fieldName = JSON.stringify(field.name);
         const fieldValue = fieldData?.data?.content?.fields;
-        if (fieldName.includes("Collateral") && fieldValue) {
-            collateralAmount = BigInt(fieldValue.amount || 0);
-        } else if (fieldName.includes("Debt") && fieldValue) {
-            if (fieldName.includes("USDC")) {
-                debtUSDC = BigInt(fieldValue.amount || 0);
-            } else if (fieldName.includes("ETH")) {
-                debtETH = BigInt(fieldValue.amount || 0);
-            }
+        if (fieldName.includes("Collateral") && fieldValue) collateralAmount = BigInt(fieldValue.amount || 0);
+        else if (fieldName.includes("Debt") && fieldValue) {
+            if (fieldName.includes("USDC")) debtUSDC = BigInt(fieldValue.amount || 0);
+            else if (fieldName.includes("ETH")) debtETH = BigInt(fieldValue.amount || 0);
         }
     }
     return { collateralAmount, debtUSDC, debtETH };
+}
+
+// ==================== PHASE 0: INITIALIZE MARKET ====================
+
+async function initializeMarket(adminCapId) {
+    console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle)...");
+    const tx = new Transaction();
+
+    // 1. Allow all whitelist
+    tx.moveCall({
+        target: `${PKG}::app::whitelist_allow_all`,
+        arguments: [tx.object(adminCapId), tx.object(MARKET)],
+    });
+
+    const SCALE = 10n ** 12n;
+
+    const addInterestModel = (coinType, p) => {
+        const [modelChange] = tx.moveCall({
+            target: `${PKG}::app::create_interest_model_change`,
+            typeArguments: [coinType],
+            arguments: [
+                tx.object(adminCapId),
+                tx.pure.u64(p.baseBorrowRatePerSec),
+                tx.pure.u64(p.interestRateScale),
+                tx.pure.u64(p.borrowRateOnMidKink),
+                tx.pure.u64(p.midKink),
+                tx.pure.u64(p.borrowRateOnHighKink),
+                tx.pure.u64(p.highKink),
+                tx.pure.u64(p.maxBorrowRate),
+                tx.pure.u64(p.revenueFactor),
+                tx.pure.u64(p.borrowWeight),
+                tx.pure.u64(p.scale),
+                tx.pure.u64(p.minBorrowAmount),
+            ],
+        });
+        tx.moveCall({
+            target: `${PKG}::app::add_interest_model`,
+            typeArguments: [coinType],
+            arguments: [tx.object(MARKET), tx.object(adminCapId), modelChange, tx.object(CLOCK)],
+        });
+    };
+
+    const addRiskModel = (coinType, p) => {
+        const [modelChange] = tx.moveCall({
+            target: `${PKG}::app::create_risk_model_change`,
+            typeArguments: [coinType],
+            arguments: [
+                tx.object(adminCapId),
+                tx.pure.u64(p.collateralFactor),
+                tx.pure.u64(p.liquidationFactor),
+                tx.pure.u64(p.liquidationPanelty),
+                tx.pure.u64(p.liquidationDiscount),
+                tx.pure.u64(p.scale),
+                tx.pure.u64(p.maxCollateralAmount),
+            ],
+        });
+        tx.moveCall({
+            target: `${PKG}::app::add_risk_model`,
+            typeArguments: [coinType],
+            arguments: [tx.object(MARKET), tx.object(adminCapId), modelChange],
+        });
+    };
+
+    const addLimiter = (coinType, limit, cycle, segment) => {
+        tx.moveCall({
+            target: `${PKG}::app::add_limiter`,
+            typeArguments: [coinType],
+            arguments: [tx.object(adminCapId), tx.object(MARKET), tx.pure.u64(limit), tx.pure.u32(cycle), tx.pure.u32(segment)],
+        });
+    };
+
+    const registerDecimals = (coinType, metadataId) => {
+        tx.moveCall({
+            target: `${PKG}::coin_decimals_registry::register_decimals`,
+            typeArguments: [coinType],
+            arguments: [tx.object(REGISTRY), tx.object(metadataId)],
+        });
+    };
+
+    // SUI
+    registerDecimals(SUI_TYPE, SUI_METADATA);
+    addInterestModel(SUI_TYPE, {
+        baseBorrowRatePerSec: 0n, interestRateScale: 10n ** 7n,
+        borrowRateOnMidKink: 10n * (SCALE / 100n), midKink: 60n * (SCALE / 100n),
+        borrowRateOnHighKink: 100n * (SCALE / 100n), highKink: 90n * (SCALE / 100n),
+        maxBorrowRate: 300n * (SCALE / 100n), revenueFactor: 5n * (SCALE / 100n),
+        borrowWeight: 125n * (SCALE / 100n), scale: SCALE, minBorrowAmount: 10n ** 7n,
+    });
+    addRiskModel(SUI_TYPE, {
+        collateralFactor: 60n, liquidationFactor: 70n, liquidationPanelty: 10n,
+        liquidationDiscount: 7n, scale: 100n, maxCollateralAmount: 10n ** 17n,
+    });
+    addLimiter(SUI_TYPE, 10n ** 15n, 86400, 1800);
+
+    // USDC
+    registerDecimals(USDC_TYPE, USDC_METADATA);
+    addInterestModel(USDC_TYPE, {
+        baseBorrowRatePerSec: 0n, interestRateScale: 10n ** 7n,
+        borrowRateOnMidKink: 8n * (SCALE / 100n), midKink: 60n * (SCALE / 100n),
+        borrowRateOnHighKink: 50n * (SCALE / 100n), highKink: 90n * (SCALE / 100n),
+        maxBorrowRate: 150n * (SCALE / 100n), revenueFactor: 5n * (SCALE / 100n),
+        borrowWeight: 100n * (SCALE / 100n), scale: SCALE, minBorrowAmount: 10n ** 7n,
+    });
+    addRiskModel(USDC_TYPE, {
+        collateralFactor: 90n, liquidationFactor: 95n, liquidationPanelty: 3n,
+        liquidationDiscount: 2n, scale: 100n, maxCollateralAmount: 10n ** 17n,
+    });
+    addLimiter(USDC_TYPE, 10n ** 15n, 86400, 1800);
+
+    // ETH
+    registerDecimals(ETH_TYPE, ETH_METADATA);
+    addInterestModel(ETH_TYPE, {
+        baseBorrowRatePerSec: 0n, interestRateScale: 10n ** 7n,
+        borrowRateOnMidKink: 10n * (SCALE / 100n), midKink: 60n * (SCALE / 100n),
+        borrowRateOnHighKink: 100n * (SCALE / 100n), highKink: 90n * (SCALE / 100n),
+        maxBorrowRate: 300n * (SCALE / 100n), revenueFactor: 5n * (SCALE / 100n),
+        borrowWeight: 100n * (SCALE / 100n), scale: SCALE, minBorrowAmount: 10n ** 7n,
+    });
+    addRiskModel(ETH_TYPE, {
+        collateralFactor: 80n, liquidationFactor: 90n, liquidationPanelty: 8n,
+        liquidationDiscount: 5n, scale: 100n, maxCollateralAmount: 10n ** 16n,
+    });
+    addLimiter(ETH_TYPE, 10n ** 15n, 86400, 1800);
+
+    // Initialize Oracle Prices (SUI=$1, USDC=$1, ETH=$2000)
+    tx.moveCall({
+        target: `${PKG}::x_oracle::update_price`,
+        typeArguments: [SUI_TYPE],
+        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(100_000_000n)],
+    });
+    tx.moveCall({
+        target: `${PKG}::x_oracle::update_price`,
+        typeArguments: [USDC_TYPE],
+        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(100_000_000n)],
+    });
+    tx.moveCall({
+        target: `${PKG}::x_oracle::update_price`,
+        typeArguments: [ETH_TYPE],
+        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(200_000_000_000n)],
+    });
+
+    await executeTx(tx, funderKeypair);
+    console.log("[INIT] Market initialized successfully!");
 }
 
 // ==================== WHITELIST VICTIM ====================
@@ -411,6 +549,9 @@ async function main() {
     await printBalances(funderAddress);
 
     const adminCapId = await findAdminCap();
+
+    // INISIALISASI MARKET SEBELUM MEMULAI PoC
+    await initializeMarket(adminCapId);
 
     const victimA = Ed25519Keypair.generate();
     const victimB = Ed25519Keypair.generate();
