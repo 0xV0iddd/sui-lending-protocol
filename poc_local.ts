@@ -12,23 +12,23 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
-// ==================== KONFIGURASI LOCAL TESTNET (ID BARU - LOCALNET FRESH) ====================
-// Dari output_protocol2.txt (Digest: B7bguPLVNXKP6jsdWCJ7uNgVUG3yxLeKvMNgBqujAmZ8, Epoch 2)
-const PKG = "0xdcaf73b9ad5879fd3d76f17f8028b117e4e0abe6a6fcfe4563a72b6ba5d55d64";
-const VERSION = "0x4441fe840e7fd257ca85886846be26b14abceb211d73cb6dc8d1ff7b348a4ebc";
-const MARKET = "0x05e8b9e14a1250a4d5d375f7b8ea706eb3d41c8012c50b16c3a5c6aaa74b638e";
-const ORACLE = "0xa45ff6e590123eff5951dd6bb1fee5ed055b71c55aa3a683365a70ddac1abce8";
-const REGISTRY = "0xf123aadb00f51a7cfb3c325c402483c5513861bac410f5b52aecf9a4b8f8ba91";
+// ==================== KONFIGURASI LOCAL TESTNET (ID BARU - EPOCH 1) ====================
+// Dari output_protocol_baru.txt (Digest: 5ZPmjuWomho34QRMvuJ9GmURXNHFrFL2jbNXzmba8EC3)
+const PKG = "0x44f7a1d22d518bd09f505789fafcecc21aaad600e735da948f0488915e5339bb";
+const VERSION = "0x5105e15f46dccec09955e9711d208a95a0d3ffcfd6a6aba1fe828b169d572375";
+const MARKET = "0xa11ac89de7f019e9db2ff0c694fbbf6d4ce929c4afd49df2d144d5141c96d2f8";
+const ORACLE = "0x500b3d26c5d0e8fab0fa02543e29db26199832211fd8f04e2369fc23aaf59a93";
+const REGISTRY = "0x8900d8c3ff456c5ed1b16135316ca6cd7d556031f552366ce6f7b9d0d183bbd0";
 const CLOCK = "0x6";
 
-// Dari output_testcoin2.txt (Digest: EydNCgsRR3qJHN6ZFTfTjp63T7w3Jpabt5oLaf9ZMU4m, Epoch 2)
-const TEST_COIN_PKG = "0x4b38950497d5f2f4e0859d253709725e6145cf08eaa25dfbe82b1ec549dce95e";
+// Dari output_testcoin_baru.txt (Digest: GxbRTz9XGu8CJAEJnct2yvJeGtdRPF3bU8e8593zcAow)
+const TEST_COIN_PKG = "0xa3c08dc88b5603a3edfe93edb4eb34eca5a7994ade9d8daaa3802e2b87960673";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0xf7beaa49e6037e0761d8f98f012f292c2d683e9abfec50e7beae842dff33340d";
-const ETH_TREASURY = "0x30a259b4df48767da5669be588f9656593f77d47098b376aa7ff91822693b132";
+const USDC_TREASURY = "0x528b618d1f4a80ef3611d400a875d087826e42a947a476a8daa32bf3196dec2e";
+const ETH_TREASURY = "0xf4f37e5ee509bada10010a6b0312bcc102654b582f3234fd6d7dc80a68856b6f";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
