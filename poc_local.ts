@@ -37,14 +37,9 @@ const funderAddress = funderKeypair.getPublicKey().toSuiAddress();
 
 console.log(`[INIT] Funder Address: ${funderAddress}`);
 
-// Helper untuk Pure U64
-const pu64 = (val: bigint | number) => tx_pure_u64(val);
-function tx_pure_u64(val: bigint | number) {
-    return bcs.u64().serialize(BigInt(val));
-}
-
-// Helper untuk Pure Address
-const paddr = (addr: string) => bcs.address().serialize(addr);
+// Helper untuk Pure U64 dan Address (BCS Serialization)
+const pu64 = (val: bigint | number) => bcs.u64().serialize(BigInt(val));
+const paddr = (addr: string) => bcs.Address.serialize(addr);
 
 // ==================== HELPER FUNCTIONS ====================
 
