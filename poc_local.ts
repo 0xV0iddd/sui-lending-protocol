@@ -31,7 +31,7 @@ const ETH_TREASURY = "0x1702fa3e0c15291ef0667bffad8ff36c9424686d1a3e6edc976076ff
 // ID Hasil Publish Protokol Anda Sebelumnya
 const USDC_METADATA = "0x95feaf15c2c9fe45255caf33960a5b218a05df8f24d665d87b566cf921abe269";
 const ETH_METADATA = "0xfe7a6ad2a78718993752ac3b59c178c2b5af1cd1cc1b8377f7e062017ca211f3";
-const SUI_METADATA = "0x9258181f5ceac8dbffb7030890243caed69a9599d2886d957a9cb7656af3bdb3"; // Native SUI
+const SUI_METADATA = "0x9258181f5ceac8dbffb7030890243caed69a9599d2886d957a9cb7656af3bdb3";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -119,6 +119,7 @@ async function initializeMarket(adminCapId) {
 
     const SCALE = 10n ** 12n;
 
+    // Helper untuk merangkai create_interest_model_change dan add_interest_model dalam 1 PTB
     const addInterestModel = (coinType, p) => {
         const [modelChange] = tx.moveCall({
             target: `${PKG}::app::create_interest_model_change`,
@@ -145,6 +146,7 @@ async function initializeMarket(adminCapId) {
         });
     };
 
+    // Helper untuk merangkai create_risk_model_change dan add_risk_model dalam 1 PTB
     const addRiskModel = (coinType, p) => {
         const [modelChange] = tx.moveCall({
             target: `${PKG}::app::create_risk_model_change`,
@@ -182,6 +184,14 @@ async function initializeMarket(adminCapId) {
         });
     };
 
+    const setMinCollateral = (coinType, amount) => {
+        tx.moveCall({
+            target: `${PKG}::app::update_min_collateral_amount`,
+            typeArguments: [coinType],
+            arguments: [tx.object(adminCapId), tx.object(MARKET), tx.pure.u64(amount)],
+        });
+    };
+
     // SUI
     registerDecimals(SUI_TYPE, SUI_METADATA);
     addInterestModel(SUI_TYPE, {
@@ -196,6 +206,7 @@ async function initializeMarket(adminCapId) {
         liquidationDiscount: 7n, scale: 100n, maxCollateralAmount: 10n ** 17n,
     });
     addLimiter(SUI_TYPE, 10n ** 15n, 86400, 1800);
+    setMinCollateral(SUI_TYPE, 0n); // Set min collateral ke 0 agar tidak mengganggu testing
 
     // USDC
     registerDecimals(USDC_TYPE, USDC_METADATA);
@@ -211,6 +222,7 @@ async function initializeMarket(adminCapId) {
         liquidationDiscount: 2n, scale: 100n, maxCollateralAmount: 10n ** 17n,
     });
     addLimiter(USDC_TYPE, 10n ** 15n, 86400, 1800);
+    setMinCollateral(USDC_TYPE, 0n);
 
     // ETH
     registerDecimals(ETH_TYPE, ETH_METADATA);
@@ -226,6 +238,7 @@ async function initializeMarket(adminCapId) {
         liquidationDiscount: 5n, scale: 100n, maxCollateralAmount: 10n ** 16n,
     });
     addLimiter(ETH_TYPE, 10n ** 15n, 86400, 1800);
+    setMinCollateral(ETH_TYPE, 0n);
 
     // Initialize Oracle Prices (SUI=$1, USDC=$1, ETH=$2000)
     tx.moveCall({
