@@ -221,6 +221,15 @@ async function initializeMarket(adminCapId) {
         });
     };
 
+    // --- TAMBAHAN BARU: setSupplyLimit ---
+    const setSupplyLimit = (coinType, limit) => {
+        tx.moveCall({
+            target: `${PKG}::app::update_supply_limit`,
+            typeArguments: [coinType],
+            arguments: [tx.object(adminCapId), tx.object(MARKET), tx.pure.u64(limit)],
+        });
+    };
+
     // SUI
     registerDecimals(SUI_TYPE, suiMetaId);
     addInterestModel(SUI_TYPE, {
@@ -236,6 +245,7 @@ async function initializeMarket(adminCapId) {
     });
     addLimiter(SUI_TYPE, 10n ** 15n, 86400, 1800);
     setMinCollateral(SUI_TYPE, 0n);
+    setSupplyLimit(SUI_TYPE, 10n ** 18n); // <-- FIXED
 
     // USDC
     registerDecimals(USDC_TYPE, usdcMetaId);
@@ -252,6 +262,7 @@ async function initializeMarket(adminCapId) {
     });
     addLimiter(USDC_TYPE, 10n ** 15n, 86400, 1800);
     setMinCollateral(USDC_TYPE, 0n);
+    setSupplyLimit(USDC_TYPE, 10n ** 18n); // <-- FIXED
 
     // ETH
     registerDecimals(ETH_TYPE, ethMetaId);
@@ -268,6 +279,7 @@ async function initializeMarket(adminCapId) {
     });
     addLimiter(ETH_TYPE, 10n ** 15n, 86400, 1800);
     setMinCollateral(ETH_TYPE, 0n);
+    setSupplyLimit(ETH_TYPE, 10n ** 18n); // <-- FIXED
 
     await executeTx(tx, funderKeypair);
     console.log("[INIT] Market initialized successfully!");
