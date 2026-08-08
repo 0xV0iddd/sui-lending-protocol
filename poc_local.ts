@@ -14,7 +14,7 @@ const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET ====================
 const PKG = "0xc2e9aebe7fcfbd4c4a6aa49a387fe33817f41f0bf70873100b4f12ad3168b670";
-const VERSION = "0x531afe6c8abf6d50c14b3aae70a6720d1323a50d4e8c5eecf642b921762b9b81";
+const VERSION = "0x531afe6c8abf642b921762b9b81";
 const MARKET = "0x078ba677e7d9090a1a2d925377d5806534591446ce7916c65399dd4ead992962";
 const ORACLE = "0x397ec083471276c9245bf23ad51cbf526784584cb68053f216a1513f3e37d677";
 const REGISTRY = "0x4a5de23a9ce5624377ac5ac2dc3e89d9d183dec31d06cee6f0a98519fdf3b01f";
@@ -60,7 +60,6 @@ async function findAdminCap(): Promise<string> {
 }
 
 // ==================== HELPER: CARI COIN METADATA ID ====================
-// Mengambil ID CoinMetadata secara dinamis melalui RPC getCoinMetadata
 async function findCoinMetadata(coinType: string): Promise<string> {
     console.log(`[INIT] Searching for CoinMetadata<${coinType}>...`);
     const response = await client.getCoinMetadata({ coinType });
@@ -138,6 +137,12 @@ async function initializeMarket(adminCapId) {
     // 1. Allow all whitelist
     tx.moveCall({
         target: `${PKG}::app::whitelist_allow_all`,
+        arguments: [tx.object(adminCapId), tx.object(MARKET)],
+    });
+
+    // 2. Initialize Market Coin Price Table (WAJIB sebelum mint/supply)
+    tx.moveCall({
+        target: `${PKG}::app::init_market_coin_price_table`,
         arguments: [tx.object(adminCapId), tx.object(MARKET)],
     });
 
