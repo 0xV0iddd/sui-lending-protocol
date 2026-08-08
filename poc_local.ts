@@ -45,7 +45,6 @@ const paddr = (addr: string) => bcs.Address.serialize(addr);
 
 async function executeTx(tx, keypair) {
     tx.setSender(keypair.getPublicKey().toSuiAddress());
-    tx.setGasBudget(1_000_000_000); // 1 SUI Gas Budget eksplisit
     const result = await client.signAndExecuteTransaction({
         signer: keypair,
         transaction: tx,
