@@ -13,22 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET (ID TERBARU) ====================
-// Dari output_protocol_baru8.txt (Digest: 7u7bizyoPCycaoxLjUAbpGB2u1V9LdmXRjSnazN8fk8a)
-const PKG = "0x420d4d6bf5a09ded146ac51b8e30aa6677296ad034298aed92e049b345c1acad";
-const VERSION = "0x924f648922294e61b8c68bb306bc8713120b4d5d6c009e6c7ea2261d39fa7659";
-const MARKET = "0x8bd0a34f8e835b7578f66553584b28351cd3f3a3e43a385439c987546e0e7060";
-const ORACLE = "0x64b2ce8df5fbbe6f5d39d6a1cf6f23b1f83efb1eca38b5ae6cffd5d4cca08ecf";
-const REGISTRY = "0x4c23b2d416a238251ade933ceae4f5c265e2c92086e6681a086345ec6424dab3";
+// Dari output_protocol_baru9.txt (Digest: 3UHTmtXxRXLEgDZ3sDDiTGgDmjmPQj1rH3nee5XCwHU2)
+const PKG = "0x6feb7fbb6eb0ff281cc34b62fe154126f8aa29f71d4bfefcadd0c88ada5d8750";
+const VERSION = "0x82fa0adb54a642bdac9ba2508db73d388edc914f670e4a2d78e699e3a66296c8";
+const MARKET = "0x36760fc3fa256288b2e7f2c59e7139d07884537952b09ae51e45ae2983584c93";
+const ORACLE = "0x59e9a6be6594cb4c79aacedecd705ce7aafb625182e9298d73c5f2a927d2760b";
+const REGISTRY = "0x17229383f53c442b474b463a3407cc42cee279e165e2944ac0841d0a092e8d92";
 const CLOCK = "0x6";
 
-// Dari output_testcoin_baru8.txt (Digest: 5Ye5zwt9LmZ45MDD13BHWYDWTmEajvQkLfZv3xiu7Pbb)
-const TEST_COIN_PKG = "0x6ae0945dc9f87b0cf47ec4649ef2dd2cf27220cdac890441e36c60154ca7e880";
+// Dari output_testcoin_baru9.txt (Digest: Bu9pJo7zjQgUhZHip3Xv2p5nDkpKSkUcwLBydbtRGyx9)
+const TEST_COIN_PKG = "0x97e73b1290e3852628fb05717c0e19828949d585b32f9b57f1d74084c8c6d729";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0xc589eb20f668ecefc745031eb9f43e648e18400ac10154d47037a23f3e845d3a";
-const ETH_TREASURY = "0x6f47ef994c13ea0534d95e3e1b0a375ae57009837cf8423c8af6459b386db92b";
+const USDC_TREASURY = "0xde18fc99ac5cd11358a1abe228385e092d1f352797ade6dcffb1ad47122279da";
+const ETH_TREASURY = "0x5e63d5ba2f07248db0ec68b09ad60173c37374dbd37ca8b8be3bb5d25bfd9c23";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -119,12 +119,15 @@ async function readObligationState(obligationId) {
     let collateralAmount = 0n, debtUSDC = 0n, debtETH = 0n;
     for (const field of fields.data) {
         const fieldData = await client.getDynamicFieldObject({ parentId: obligationId, name: field.name });
-        const fieldName = JSON.stringify(field.name);
+        const fieldType = fieldData?.data?.content?.type;
         const fieldValue = fieldData?.data?.content?.fields;
-        if (fieldName.includes("Collateral") && fieldValue) collateralAmount = BigInt(fieldValue.amount || 0);
-        else if (fieldName.includes("Debt") && fieldValue) {
-            if (fieldName.includes("USDC")) debtUSDC = BigInt(fieldValue.amount || 0);
-            else if (fieldName.includes("ETH")) debtETH = BigInt(fieldValue.amount || 0);
+        const fieldName = JSON.stringify(field.name);
+        
+        if (fieldType?.includes("Collateral") && fieldValue) {
+            collateralAmount = BigInt(fieldValue.amount || 0);
+        } else if (fieldType?.includes("Debt") && fieldValue) {
+            if (fieldName.includes("usdc")) debtUSDC = BigInt(fieldValue.amount || 0);
+            else if (fieldName.includes("eth")) debtETH = BigInt(fieldValue.amount || 0);
         }
     }
     return { collateralAmount, debtUSDC, debtETH };
@@ -435,11 +438,12 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
     await executeTx(supplyTx, funderKeypair);
     console.log(`[${label}] Step 4 done: Minted and supplied USDC and ETH to market`);
 
-    // --- STEP 5: Borrow USDC (Update Harga & Refresh APM di PTB yang Sama) ---
-    // Collateral = $1000. Collateral Factor = 60%. Max Borrow = $600. 
+    // --- STEP 5: Borrow USDC ---
+    // Collateral = 1000 SUI ($1000). Collateral Factor = 60%. Max Borrow = $600. 
     // We borrow 300 USDC ($300) + 0.1 ETH ($200) = $500 total debt (Healthy).
+    // PERBAIKAN: 300 USDC dengan 9 decimals = 300_000_000_000n
     const borrowUSDCTx = new Transaction();
-    // PERBAIKAN: Harga oracle 9 decimals. $1 = 1_000_000_000n. $2000 = 2_000_000_000_000n
+    // PERBAIKAN: Harga oracle 9 decimal. $1 = 1_000_000_000n. $2000 = 2_000_000_000_000n
     updatePrices(borrowUSDCTx, xOraclePkg, 1_000_000_000n, 1_000_000_000n, 2_000_000_000_000n); 
     
     // Refresh APM state agar tercatat di jam yang sama
@@ -451,7 +455,7 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
 
     const [borrowedUSDC] = borrowUSDCTx.moveCall({
         target: `${PKG}::borrow::borrow`, typeArguments: [USDC_TYPE],
-        arguments: [borrowUSDCTx.object(VERSION), borrowUSDCTx.object(obligationId), borrowUSDCTx.object(obligationKeyId), borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(300_000_000n), borrowUSDCTx.object(ORACLE), borrowUSDCTx.object(CLOCK)],
+        arguments: [borrowUSDCTx.object(VERSION), borrowUSDCTx.object(obligationId), borrowUSDCTx.object(obligationKeyId), borrowUSDCTx.object(MARKET), borrowUSDCTx.object(REGISTRY), borrowUSDCTx.pure.u64(300_000_000_000n), borrowUSDCTx.object(ORACLE), borrowUSDCTx.object(CLOCK)],
     });
     borrowUSDCTx.transferObjects([borrowedUSDC], victimAddr);
     await executeTx(borrowUSDCTx, victimKeypair);
