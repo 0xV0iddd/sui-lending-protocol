@@ -13,22 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET (ID TERBARU) ====================
-// Dari output_protocol_baru9 (1).txt (Digest: CqnnvaFvY8te4YT22jEtVuFRm4B6ig4DwUzvfUVvNPNN)
-const PKG = "0xec652b75053deb3d01692f910a55ab4ecee3510bc0d527c132cb3b58bffa1257";
-const VERSION = "0x3729ad6d084cbfe9ca2b13b9a7248edbd5cec6bf3a8898ce550bb9fb7373aeaa";
-const MARKET = "0xd035827b1567b41dc4d8280e67117365aba6cc81214ac53633e6a93d00cdff10";
-const ORACLE = "0xc01c1f4b6cd172c5265140d272f4b94516ac3d6b0c3d784221aebf3dda41c36c";
-const REGISTRY = "0x077d4c05f711ede102e0fbf978a85b7f22e68d454dbf180a07dc085ce099867d";
+// Dari output_protocol_baru9 (2).txt (Digest: 954EAFtKbxe8MEEwC7qDGudBY1G7QyigRukjSjgzicHv)
+const PKG = "0x76f16b4af879655ccc18d508f84508d41e4810fadc975268a9b5692b7b7dd02c";
+const VERSION = "0xe657e06b7a177d3a1e41eb4878e84eca66adb82197cccd58efd414cdb7087186";
+const MARKET = "0xa5b813f736621856fba0314d8ab050413ce93e41a5c5fa1b10b735ab49196e7f";
+const ORACLE = "0xd4416ce4a2521cd5c471c766ecc8576778b4d407bfd9122e715997b77fde7edf";
+const REGISTRY = "0xb4a0300851431539d06ff50caeb04b6234e6caa083bff66c8ac2d026a6bc6295";
 const CLOCK = "0x6";
 
-// Dari output_testcoin_baru9 (1).txt (Digest: DCgtNn2s9eEtcUw8TkchtZen3AxP1KVNmKmEKdKqZ1GV)
-const TEST_COIN_PKG = "0x77ba6f3eb92c022ae641df34570319d037b553816421930c141492e7ec75abfd";
+// Dari output_testcoin_baru9 (2).txt (Digest: 7pSYZSsfokchmtdBiG6K3QmtNzpzEcKekrUd3DqvLihY)
+const TEST_COIN_PKG = "0x7709ee77ba433b0ed8b7dda47d061c102e241414df315098eaf654e9ed4c5fb9";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0xfbe2e7b022265773df2c93ca8f12908eeff7d38bfa3b85b601ceaa5d49f36e6c";
-const ETH_TREASURY = "0x53ed9beb8c7b29d49a63238d38af9ddbf1f0e0802dc59c0f38260a27e09ba4c6";
+const USDC_TREASURY = "0xc31fb1e3cc8c8cc212324d90ce732884246bb12288e53ef51c485b2c3107a49d";
+const ETH_TREASURY = "0xfd4c45a83efc99c929a15bae59567af96275cfdf8d13b31f8a01db5c8c975879";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -114,20 +114,23 @@ async function printBalances(address) {
     );
 }
 
+// PERBAIKAN: Membaca dynamic field Sui yang benar (berada di fields.value.fields.amount)
 async function readObligationState(obligationId) {
     const fields = await client.getDynamicFields({ parentId: obligationId });
     let collateralAmount = 0n, debtUSDC = 0n, debtETH = 0n;
     for (const field of fields.data) {
         const fieldData = await client.getDynamicFieldObject({ parentId: obligationId, name: field.name });
         const fieldType = fieldData?.data?.content?.type;
-        const fieldValue = fieldData?.data?.content?.fields;
-        const fieldName = JSON.stringify(field.name);
+        const fieldValue = fieldData?.data?.content?.fields?.value;
+        const fieldName = JSON.stringify(field.name).toLowerCase();
         
-        if (fieldType?.includes("Collateral") && fieldValue) {
-            collateralAmount = BigInt(fieldValue.amount || 0);
-        } else if (fieldType?.includes("Debt") && fieldValue) {
-            if (fieldName.includes("usdc")) debtUSDC = BigInt(fieldValue.amount || 0);
-            else if (fieldName.includes("eth")) debtETH = BigInt(fieldValue.amount || 0);
+        if (fieldType?.includes("Collateral")) {
+            const amount = fieldValue?.fields?.amount || fieldValue?.amount || 0;
+            collateralAmount = BigInt(amount);
+        } else if (fieldType?.includes("Debt")) {
+            const amount = fieldValue?.fields?.amount || fieldValue?.amount || 0;
+            if (fieldName.includes("usdc")) debtUSDC = BigInt(amount);
+            else if (fieldName.includes("eth")) debtETH = BigInt(amount);
         }
     }
     return { collateralAmount, debtUSDC, debtETH };
@@ -603,6 +606,9 @@ async function main() {
 
     const beforeResult = await beforeExploit_singleCall(vA.obligationId, xOraclePkg);
     const afterResult = await afterExploit_multiCall(vB.obligationId, xOraclePkg);
+
+    console.log("\n[DEBUG] Checking Funder Balances AFTER Exploits...");
+    await printBalances(funderAddress);
 
     console.log("\n" + "=".repeat(60));
     console.log("FINAL IMPACT ANALYSIS");
