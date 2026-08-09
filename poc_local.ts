@@ -13,20 +13,22 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 const client = new SuiClient({ url: 'http://127.0.0.1:9000' });
 
 // ==================== KONFIGURASI LOCAL TESTNET (ID TERBARU) ====================
-const PKG = "0x45eea630bee5b96e69bca55a91e966f3a4fd505a58ba1eeabe9c8130b182f03a";
-const VERSION = "0x784ccd439da54bd1a2ac5acb68018c797a322cd7343defafee774da51f6d4ffa";
-const MARKET = "0x275f1139573a90c477663f30862bfd440d111f9945ea6dba6c835364536da273";
-const ORACLE = "0x2be98d4de4bfc8ef84348d6260846a2cf99f0c5a695bc7f985bceb7302af4ffb";
-const REGISTRY = "0x51b304750507ad83635fc99f1972b4b7fd17f98fb7b16f8890b6d16478378980";
+// Dari output_protocol_baru9 (4).txt (Digest: AS7XTH4VDrCvyN8VMaUQovzJXx7iirUNtQWsqJgEeZ59)
+const PKG = "0x8f42261e600dc21e8283ba48831498b9a47a0862b4e4e074ca61a5d7156c1fa9";
+const VERSION = "0x3f39ea695a309ec57520b7520a4326f7d4ef8fba84413e1371802e6e8b0fe166";
+const MARKET = "0xf6583c9250a5e6631ab936c5980ee8d3e42ec95fb97aec5e2a33f571ade386a8";
+const ORACLE = "0xb4217f93f73265334ff995db5b4c66740c0d8c816d64dc7d9382560f9d5f9f90";
+const REGISTRY = "0x4d231ed60314344d59c3344f728dabbd2cb5d61c6a1b8a603eeef9043358327e";
 const CLOCK = "0x6";
 
-const TEST_COIN_PKG = "0x6a6cd3d02dbffdb452db911aad9f247a04f4c146a44a8109d225696bc1bf1f20";
+// Dari output_testcoin_baru9 (4).txt (Digest: HkT1Vgda9S69wgoxoq8q13E7YwrD7hNxEKpZYrq3xEd)
+const TEST_COIN_PKG = "0x13f654bd4c980867d4f281beae36befe9d2f5a95cd2ecb170f5547f4eb034bde";
 const USDC_TYPE = `${TEST_COIN_PKG}::usdc::USDC`;
 const ETH_TYPE = `${TEST_COIN_PKG}::eth::ETH`;
 const SUI_TYPE = "0x2::sui::SUI";
 
-const USDC_TREASURY = "0x0d9ed76c194c8adaf4dc3122087d7e067bd85e29f8b418b73f52138f1c278129";
-const ETH_TREASURY = "0x6965c96d2b5c330b3964aefe3540d59111099cdd8f18a69e779e98074f07ab40";
+const USDC_TREASURY = "0xf8338ff208c62585a64aab75ead3efa83a89d2b1141a0dbbe6b48e62744180e0";
+const ETH_TREASURY = "0x9265d66f96464abe5e6ad9c4052d99e3c364c82fcfbb27c3b1fabfe6f67dd6ff";
 
 const funderPrivateKeyStr = "suiprivkey1qzuxayfjwjmrqat03vkjh5nrt66fp4utywud2x8v0k0a6fg453yg7j2kcaa";
 const privateKeyBytes = decodeSuiPrivateKey(funderPrivateKeyStr).secretKey;
@@ -113,69 +115,42 @@ async function printBalances(address) {
     );
 }
 
-// PERBAIKAN: Menelusuri WitTable -> Table -> Dynamic Field untuk membaca Collateral & Debt
+// PERBAIKAN: Menelusuri Object Obligation -> WitTable -> Table -> Dynamic Field
 async function readObligationState(obligationId) {
     let collateralAmount = 0n, debtUSDC = 0n, debtETH = 0n;
 
     try {
-        // 1. Dapatkan ID WitTable untuk Collaterals dan Debts dari Obligation
-        const obFields = await client.getDynamicFields({ parentId: obligationId });
-        let collateralsWitTableId = "";
-        let debtsWitTableId = "";
+        const res = await client.getObject({
+            id: obligationId,
+            options: { showContent: true }
+        });
 
-        for (const f of obFields.data) {
-            if (f.objectType.includes("wit_table::WitTable")) {
-                if (f.objectType.includes("Collateral")) collateralsWitTableId = f.objectId;
-                if (f.objectType.includes("Debt")) debtsWitTableId = f.objectId;
+        const content = res?.data?.content?.fields;
+        if (!content) return { collateralAmount, debtUSDC, debtETH };
+
+        const collTableId = content.collaterals?.fields?.table?.fields?.id?.id;
+        const debtTableId = content.debts?.fields?.table?.fields?.id?.id;
+
+        if (collTableId) {
+            const collFields = await client.getDynamicFields({ parentId: collTableId });
+            for (const f of collFields.data) {
+                const fieldData = await client.getDynamicFieldObject({ parentId: collTableId, name: f.name });
+                const value = fieldData?.data?.content?.fields?.value;
+                const amount = BigInt(value?.fields?.amount || value?.amount || 0);
+                const nameStr = JSON.stringify(f.name).toLowerCase();
+                if (nameStr.includes("sui")) collateralAmount = amount;
             }
         }
 
-        // 2. Baca Collateral SUI
-        if (collateralsWitTableId) {
-            const witTableFields = await client.getDynamicFields({ parentId: collateralsWitTableId });
-            let collTableId = "";
-            for (const f of witTableFields.data) {
-                if (f.objectType.includes("sui::table::Table")) {
-                    collTableId = f.objectId;
-                    break;
-                }
-            }
-
-            if (collTableId) {
-                const tableFields = await client.getDynamicFields({ parentId: collTableId });
-                for (const f of tableFields.data) {
-                    const fieldData = await client.getDynamicFieldObject({ parentId: collTableId, name: f.name });
-                    const fieldValue = fieldData?.data?.content?.fields?.value;
-                    const amount = BigInt(fieldValue?.fields?.amount || fieldValue?.amount || 0);
-                    const nameStr = JSON.stringify(f.name).toLowerCase();
-                    
-                    if (nameStr.includes("sui")) collateralAmount = amount;
-                }
-            }
-        }
-
-        // 3. Baca Debt USDC & ETH
-        if (debtsWitTableId) {
-            const witTableFields = await client.getDynamicFields({ parentId: debtsWitTableId });
-            let debtTableId = "";
-            for (const f of witTableFields.data) {
-                if (f.objectType.includes("sui::table::Table")) {
-                    debtTableId = f.objectId;
-                    break;
-                }
-            }
-
-            if (debtTableId) {
-                const tableFields = await client.getDynamicFields({ parentId: debtTableId });
-                for (const f of tableFields.data) {
-                    const fieldData = await client.getDynamicFieldObject({ parentId: debtTableId, name: f.name });
-                    const fieldValue = fieldData?.data?.content?.fields?.value;
-                    const amount = BigInt(fieldValue?.fields?.amount || fieldValue?.amount || 0);
-                    const nameStr = JSON.stringify(f.name).toLowerCase();
-                    
-                    if (nameStr.includes("usdc")) debtUSDC = amount;
-                    else if (nameStr.includes("eth")) debtETH = amount;
-                }
+        if (debtTableId) {
+            const debtFields = await client.getDynamicFields({ parentId: debtTableId });
+            for (const f of debtFields.data) {
+                const fieldData = await client.getDynamicFieldObject({ parentId: debtTableId, name: f.name });
+                const value = fieldData?.data?.content?.fields?.value;
+                const amount = BigInt(value?.fields?.amount || value?.amount || 0);
+                const nameStr = JSON.stringify(f.name).toLowerCase();
+                if (nameStr.includes("usdc")) debtUSDC = amount;
+                else if (nameStr.includes("eth")) debtETH = amount;
             }
         }
     } catch (e) {
